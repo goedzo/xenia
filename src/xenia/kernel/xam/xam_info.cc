@@ -36,6 +36,11 @@ SHIM_CALL XamGetSystemVersion_shim(PPCContext* ppc_context,
   SHIM_SET_RETURN_32(0);
 }
 
+void XCustomRegisterDynamicActions() {
+  // ???
+}
+DECLARE_XAM_EXPORT(XCustomRegisterDynamicActions, ExportTag::kStub);
+
 SHIM_CALL XGetAVPack_shim(PPCContext* ppc_context, KernelState* kernel_state) {
   // DWORD
   // Not sure what the values are for this, but 6 is VGA.
@@ -97,16 +102,9 @@ dword_result_t XamLoaderSetLaunchData(lpvoid_t data, dword_t size) {
   auto xam = kernel_state()->GetKernelModule<XamModule>("xam.xex");
 
   auto& loader_data = xam->loader_data();
-  if (loader_data.launch_data_ptr) {
-    kernel_memory()->SystemHeapFree(loader_data.launch_data_ptr);
-  }
-
   loader_data.launch_data_present = size ? true : false;
-  loader_data.launch_data_ptr = kernel_memory()->SystemHeapAlloc(size);
-  loader_data.launch_data_size = size;
-
-  std::memcpy(kernel_memory()->TranslateVirtual(loader_data.launch_data_ptr),
-              data, size);
+  loader_data.launch_data.resize(size);
+  std::memcpy(loader_data.launch_data.data(), data, size);
 
   // FIXME: Unknown return value.
   return 0;
@@ -118,7 +116,7 @@ dword_result_t XamLoaderGetLaunchDataSize(lpdword_t size_ptr) {
   auto& loader_data = xam->loader_data();
 
   if (loader_data.launch_data_present) {
-    *size_ptr = xam->loader_data().launch_data_size;
+    *size_ptr = uint32_t(xam->loader_data().launch_data.size());
     return X_ERROR_SUCCESS;
   }
 
@@ -134,16 +132,9 @@ dword_result_t XamLoaderGetLaunchData(lpvoid_t buffer_ptr,
     return X_ERROR_NOT_FOUND;
   }
 
-  if (loader_data.launch_data_ptr) {
-    uint8_t* loader_buffer_ptr =
-        kernel_memory()->TranslateVirtual(loader_data.launch_data_ptr);
-
-    uint32_t copy_size =
-        std::min(loader_data.launch_data_size, (uint32_t)buffer_size);
-
-    std::memcpy(buffer_ptr, loader_buffer_ptr, copy_size);
-  }
-
+  uint32_t copy_size =
+      std::min(uint32_t(loader_data.launch_data.size()), uint32_t(buffer_size));
+  std::memcpy(buffer_ptr, loader_data.launch_data.data(), copy_size);
   return X_ERROR_SUCCESS;
 }
 DECLARE_XAM_EXPORT(XamLoaderGetLaunchData, ExportTag::kSketchy);
@@ -231,7 +222,8 @@ dword_result_t XamEnumerate(dword_t handle, dword_t flags, lpvoid_t buffer,
       e->WriteItem(buffer) ? X_ERROR_SUCCESS : X_ERROR_NO_MORE_FILES;
 
   // Return X_ERROR_NO_MORE_FILES in HRESULT form.
-  X_HRESULT extended_result = result != 0 ? 0x80070012 : 0;
+  X_HRESULT extended_result =
+      result != 0 ? X_HRESULT_FROM_WIN32(X_ERROR_NO_MORE_FILES) : 0;
   if (items_returned) {
     assert_true(!overlapped);
     *items_returned = result == X_ERROR_SUCCESS ? 1 : 0;

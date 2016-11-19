@@ -252,7 +252,11 @@ void CommandProcessor::WriteRegister(uint32_t index, uint32_t value) {
     return;
   }
 
+  // 0x1844 - pointer to frontbuffer
   regs->values[index].u32 = value;
+  if (!regs->GetRegisterInfo(index)) {
+    XELOGW("GPU: Write to unknown register (%.4X = %.8X)", index, value);
+  }
 
   // If this is a COHER register, set the dirty flag.
   // This will block the command processor the next time it WAIT_MEM_REGs and
@@ -287,8 +291,8 @@ void CommandProcessor::MakeCoherent() {
 
   RegisterFile* regs = register_file_;
   auto status_host = regs->values[XE_GPU_REG_COHER_STATUS_HOST].u32;
-  // auto base_host = regs->values[XE_GPU_REG_COHER_BASE_HOST].u32;
-  // auto size_host = regs->values[XE_GPU_REG_COHER_SIZE_HOST].u32;
+  auto base_host = regs->values[XE_GPU_REG_COHER_BASE_HOST].u32;
+  auto size_host = regs->values[XE_GPU_REG_COHER_SIZE_HOST].u32;
 
   if (!(status_host & 0x80000000ul)) {
     return;
@@ -646,6 +650,7 @@ bool CommandProcessor::ExecutePacketType3(RingBuffer* reader, uint32_t packet) {
     default:
       XELOGGPU("Unimplemented GPU OPCODE: 0x%.2X\t\tCOUNT: %d\n", opcode,
                count);
+      assert_always();
       reader->AdvanceRead(count * sizeof(uint32_t));
       break;
   }
@@ -738,7 +743,9 @@ bool CommandProcessor::ExecutePacketType3_INDIRECT_BUFFER(RingBuffer* reader,
                                                           uint32_t count) {
   // indirect buffer dispatch
   uint32_t list_ptr = CpuToGpu(reader->Read<uint32_t>(true));
-  uint32_t list_length = reader->Read<uint32_t>(true) & 0xFFFFF;
+  uint32_t list_length = reader->Read<uint32_t>(true);
+  assert_zero(list_length & ~0xFFFFF);
+  list_length &= 0xFFFFF;
   ExecuteIndirectBuffer(GpuToCpu(list_ptr), list_length);
   return true;
 }
@@ -1051,6 +1058,7 @@ bool CommandProcessor::ExecutePacketType3_DRAW_INDX(RingBuffer* reader,
   IndexBufferInfo index_buffer_info;
   uint32_t src_sel = (dword1 >> 6) & 0x3;
   if (src_sel == 0x0) {
+    // DI_SRC_SEL_DMA
     // Indexed draw.
     is_indexed = true;
     index_buffer_info.guest_base = reader->Read<uint32_t>(true);
@@ -1063,17 +1071,27 @@ bool CommandProcessor::ExecutePacketType3_DRAW_INDX(RingBuffer* reader,
     index_size *= index_32bit ? 4 : 2;
     index_buffer_info.length = index_size;
     index_buffer_info.count = index_count;
+  } else if (src_sel == 0x1) {
+    // DI_SRC_SEL_IMMEDIATE
+    assert_always();
   } else if (src_sel == 0x2) {
+    // DI_SRC_SEL_AUTO_INDEX
     // Auto draw.
     index_buffer_info.guest_base = 0;
     index_buffer_info.length = 0;
   } else {
-    // Unknown source select.
+    // Invalid source select.
     assert_always();
   }
 
-  return IssueDraw(prim_type, index_count,
-                   is_indexed ? &index_buffer_info : nullptr);
+  bool success = IssueDraw(prim_type, index_count,
+                           is_indexed ? &index_buffer_info : nullptr);
+  if (!success) {
+    XELOGE("PM4_DRAW_INDX(%d, %d, %d): Failed in backend", index_count,
+           prim_type, src_sel);
+  }
+
+  return true;
 }
 
 bool CommandProcessor::ExecutePacketType3_DRAW_INDX_2(RingBuffer* reader,
@@ -1091,7 +1109,13 @@ bool CommandProcessor::ExecutePacketType3_DRAW_INDX_2(RingBuffer* reader,
   // uint32_t index_ptr = reader->ptr();
   reader->AdvanceRead((count - 1) * sizeof(uint32_t));
 
-  return IssueDraw(prim_type, index_count, nullptr);
+  bool success = IssueDraw(prim_type, index_count, nullptr);
+  if (!success) {
+    XELOGE("PM4_DRAW_INDX_IMM(%d, %d): Failed in backend", index_count,
+           prim_type);
+  }
+
+  return true;
 }
 
 bool CommandProcessor::ExecutePacketType3_SET_CONSTANT(RingBuffer* reader,

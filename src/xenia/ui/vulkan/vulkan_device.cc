@@ -33,25 +33,31 @@ namespace vulkan {
 
 VulkanDevice::VulkanDevice(VulkanInstance* instance) : instance_(instance) {
   if (FLAGS_vulkan_validation) {
-    /*DeclareRequiredLayer("VK_LAYER_GOOGLE_unique_objects",
-                         Version::Make(0, 0, 0), true);*/
-    DeclareRequiredLayer("VK_LAYER_LUNARG_threading", Version::Make(0, 0, 0),
-                         true);
-    /*DeclareRequiredLayer("VK_LAYER_LUNARG_mem_tracker", Version::Make(0, 0,
-       0),
-                         true);*/
+    DeclareRequiredLayer("VK_LAYER_LUNARG_standard_validation",
+                         Version::Make(0, 0, 0), true);
+    // DeclareRequiredLayer("VK_LAYER_GOOGLE_unique_objects", Version::Make(0,
+    // 0, 0), true);
+    /*
+    DeclareRequiredLayer("VK_LAYER_GOOGLE_threading", Version::Make(0, 0, 0),
+    true);
+    DeclareRequiredLayer("VK_LAYER_LUNARG_core_validation",
+    Version::Make(0, 0, 0), true);
     DeclareRequiredLayer("VK_LAYER_LUNARG_object_tracker",
-                         Version::Make(0, 0, 0), true);
+    Version::Make(0, 0, 0), true);
     DeclareRequiredLayer("VK_LAYER_LUNARG_draw_state", Version::Make(0, 0, 0),
-                         true);
-    DeclareRequiredLayer("VK_LAYER_LUNARG_param_checker",
-                         Version::Make(0, 0, 0), true);
+    true);
+    DeclareRequiredLayer("VK_LAYER_LUNARG_parameter_validation",
+    Version::Make(0, 0, 0), true);
     DeclareRequiredLayer("VK_LAYER_LUNARG_swapchain", Version::Make(0, 0, 0),
-                         true);
+    true);
     DeclareRequiredLayer("VK_LAYER_LUNARG_device_limits",
-                         Version::Make(0, 0, 0), true);
+    Version::Make(0, 0, 0), true);
     DeclareRequiredLayer("VK_LAYER_LUNARG_image", Version::Make(0, 0, 0), true);
+    */
   }
+
+  DeclareRequiredExtension(VK_EXT_DEBUG_MARKER_EXTENSION_NAME,
+                           Version::Make(0, 0, 0), true);
 }
 
 VulkanDevice::~VulkanDevice() {
@@ -91,6 +97,9 @@ bool VulkanDevice::Initialize(DeviceInfo device_info) {
   } else {                                                       \
     enabled_features.name = VK_TRUE;                             \
   }
+  ENABLE_AND_EXPECT(shaderClipDistance);
+  ENABLE_AND_EXPECT(shaderCullDistance);
+  ENABLE_AND_EXPECT(shaderTessellationAndGeometryPointSize);
   ENABLE_AND_EXPECT(geometryShader);
   ENABLE_AND_EXPECT(depthClamp);
   ENABLE_AND_EXPECT(multiViewport);
@@ -213,6 +222,51 @@ VkQueue VulkanDevice::AcquireQueue() {
 void VulkanDevice::ReleaseQueue(VkQueue queue) {
   std::lock_guard<std::mutex> lock(queue_mutex_);
   free_queues_.push_back(queue);
+}
+
+void VulkanDevice::DbgSetObjectName(VkDevice device, uint64_t object,
+                                    VkDebugReportObjectTypeEXT object_type,
+                                    std::string name) {
+  PFN_vkDebugMarkerSetObjectNameEXT pfn_vkDebugMarkerSetObjectNameEXT = nullptr;
+  if (!pfn_vkDebugMarkerSetObjectNameEXT) {
+    pfn_vkDebugMarkerSetObjectNameEXT =
+        (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(
+            device, "vkDebugMarkerSetObjectNameEXT");
+
+    if (!pfn_vkDebugMarkerSetObjectNameEXT) {
+      return;
+    }
+  }
+
+  VkDebugMarkerObjectNameInfoEXT info;
+  info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+  info.pNext = nullptr;
+  info.objectType = object_type;
+  info.object = object;
+  info.pObjectName = name.c_str();
+  pfn_vkDebugMarkerSetObjectNameEXT(device, &info);
+}
+
+void VulkanDevice::DbgSetObjectName(uint64_t object,
+                                    VkDebugReportObjectTypeEXT object_type,
+                                    std::string name) {
+  if (!pfn_vkDebugMarkerSetObjectNameEXT_) {
+    pfn_vkDebugMarkerSetObjectNameEXT_ =
+        (PFN_vkDebugMarkerSetObjectNameEXT)vkGetDeviceProcAddr(
+            handle, "vkDebugMarkerSetObjectNameEXT");
+
+    if (!pfn_vkDebugMarkerSetObjectNameEXT_) {
+      return;
+    }
+  }
+
+  VkDebugMarkerObjectNameInfoEXT info;
+  info.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT;
+  info.pNext = nullptr;
+  info.objectType = object_type;
+  info.object = object;
+  info.pObjectName = name.c_str();
+  pfn_vkDebugMarkerSetObjectNameEXT_(handle, &info);
 }
 
 bool VulkanDevice::is_renderdoc_attached() const {

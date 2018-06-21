@@ -1037,6 +1037,30 @@ enum class AluScalarOpcode {
   kRetainPrev = 50,
 };
 
+// Returns true if the given ALU scalar opcode must be executed even if it
+// doesn't write.
+constexpr bool DoesAluScalarOpcodeHaveSideEffects(AluScalarOpcode opcode) {
+  switch (opcode) {
+    case AluScalarOpcode::kMaxAs:
+    case AluScalarOpcode::kMaxAsf:
+    case AluScalarOpcode::kSetpEq:
+    case AluScalarOpcode::kSetpNe:
+    case AluScalarOpcode::kSetpGt:
+    case AluScalarOpcode::kSetpGe:
+    case AluScalarOpcode::kSetpInv:
+    case AluScalarOpcode::kSetpPop:
+    case AluScalarOpcode::kSetpClr:
+    case AluScalarOpcode::kSetpRstr:
+    case AluScalarOpcode::kKillsEq:
+    case AluScalarOpcode::kKillsGt:
+    case AluScalarOpcode::kKillsGe:
+    case AluScalarOpcode::kKillsNe:
+    case AluScalarOpcode::kKillsOne:
+      return true;
+  }
+  return false;
+}
+
 enum class AluVectorOpcode {
   // Per-Component Floating-Point Add
   // add dest, src0, src1
@@ -1321,10 +1345,36 @@ enum class AluVectorOpcode {
   kMaxA = 29,
 };
 
+// Returns true if the given ALU vector opcode must be executed even if it
+// doesn't write.
+constexpr bool DoesAluVectorOpcodeHaveSideEffects(AluVectorOpcode opcode) {
+  switch (opcode) {
+    case AluVectorOpcode::kSetpEqPush:
+    case AluVectorOpcode::kSetpNePush:
+    case AluVectorOpcode::kSetpGtPush:
+    case AluVectorOpcode::kSetpGePush:
+    case AluVectorOpcode::kKillEq:
+    case AluVectorOpcode::kKillGt:
+    case AluVectorOpcode::kKillGe:
+    case AluVectorOpcode::kKillNe:
+    case AluVectorOpcode::kMaxA:
+      return true;
+  }
+  return false;
+}
+
 struct AluInstruction {
   // Whether data is being exported (or written to local registers).
   bool is_export() const { return data_.export_data == 1; }
   bool export_write_mask() const { return data_.scalar_dest_rel == 1; }
+
+  // Whether the instruction must be executed even if doesn't write.
+  bool has_vector_side_effects() const {
+    return DoesAluVectorOpcodeHaveSideEffects(vector_opcode());
+  }
+  bool has_scalar_side_effects() const {
+    return DoesAluScalarOpcodeHaveSideEffects(scalar_opcode());
+  }
 
   // Whether the jump is predicated (or conditional).
   bool is_predicated() const { return data_.is_predicated; }
@@ -1336,7 +1386,9 @@ struct AluInstruction {
   bool is_const_1_addressed() const { return data_.const_1_rel_abs == 1; }
   bool is_address_relative() const { return data_.address_absolute == 1; }
 
-  bool has_vector_op() const { return vector_write_mask() || is_export(); }
+  bool has_vector_op() const {
+    return vector_write_mask() || is_export() || has_vector_side_effects();
+  }
   AluVectorOpcode vector_opcode() const {
     return static_cast<AluVectorOpcode>(data_.vector_opc);
   }
@@ -1347,7 +1399,8 @@ struct AluInstruction {
 
   bool has_scalar_op() const {
     return scalar_opcode() != AluScalarOpcode::kRetainPrev ||
-           (!is_export() && scalar_write_mask() != 0);
+           (!is_export() && scalar_write_mask() != 0) ||
+           has_scalar_side_effects();
   }
   AluScalarOpcode scalar_opcode() const {
     return static_cast<AluScalarOpcode>(data_.scalar_opc);

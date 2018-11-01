@@ -121,6 +121,12 @@ SHIM_CALL XamShowMessageBoxUI_shim(PPCContext* ppc_context,
     buttons.push_back(button);
   }
 
+  if (overlapped_ptr) {
+    XOverlappedSetResult(
+        (void*)kernel_state->memory()->TranslateVirtual(overlapped_ptr),
+        X_ERROR_IO_PENDING);
+  }
+
   XELOGD(
       "XamShowMessageBoxUI(%d, %.8X(%S), %.8X(%S), %d, %.8X(%S), %d, %X, %.8X, "
       "%.8X)",

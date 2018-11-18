@@ -670,6 +670,23 @@ EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SUB, VECTOR_SUB);
 // ============================================================================
 // OPCODE_VECTOR_SHL
 // ============================================================================
+template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
+static __m128i EmulateVectorShl(void*, __m128i src1, __m128i src2) {
+  alignas(16) T value[16 / sizeof(T)];
+  alignas(16) T shamt[16 / sizeof(T)];
+
+  // Load SSE registers into a C array.
+  _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
+  _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
+
+  for (size_t i = 0; i < (16 / sizeof(T)); ++i) {
+    value[i] = value[i] << (shamt[i] & ((sizeof(T) * 8) - 1));
+  }
+
+  // Store result and return it.
+  return _mm_load_si128(reinterpret_cast<__m128i*>(value));
+}
+
 struct VECTOR_SHL_V128
     : Sequence<VECTOR_SHL_V128, I<OPCODE_VECTOR_SHL, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
@@ -688,16 +705,7 @@ struct VECTOR_SHL_V128
         break;
     }
   }
-  static __m128i EmulateVectorShlI8(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint8_t value[16];
-    alignas(16) uint8_t shamt[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 16; ++i) {
-      value[i] = value[i] << (shamt[i] & 0x7);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
+
   static void EmitInt8(X64Emitter& e, const EmitArgType& i) {
     // TODO(benvanik): native version (with shift magic).
     if (i.src2.is_constant) {
@@ -707,19 +715,10 @@ struct VECTOR_SHL_V128
       e.lea(e.r9, e.StashXmm(1, i.src2));
     }
     e.lea(e.r8, e.StashXmm(0, i.src1));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShlI8));
+    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShl<uint8_t>));
     e.vmovaps(i.dest, e.xmm0);
   }
-  static __m128i EmulateVectorShlI16(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint16_t value[8];
-    alignas(16) uint16_t shamt[8];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 8; ++i) {
-      value[i] = value[i] << (shamt[i] & 0xF);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
+
   static void EmitInt16(X64Emitter& e, const EmitArgType& i) {
     Xmm src1;
     if (i.src1.is_constant) {
@@ -773,22 +772,13 @@ struct VECTOR_SHL_V128
     } else {
       e.lea(e.r9, e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, i.src1));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShlI16));
+    e.lea(e.r8, e.StashXmm(0, src1));
+    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShl<uint16_t>));
     e.vmovaps(i.dest, e.xmm0);
 
     e.L(end);
   }
-  static __m128i EmulateVectorShlI32(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint32_t value[4];
-    alignas(16) uint32_t shamt[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 4; ++i) {
-      value[i] = value[i] << (shamt[i] & 0x1F);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
+
   static void EmitInt32(X64Emitter& e, const EmitArgType& i) {
     if (i.src2.is_constant) {
       const auto& shamt = i.src2.constant();
@@ -852,7 +842,7 @@ struct VECTOR_SHL_V128
         e.lea(e.r9, e.StashXmm(1, i.src2));
       }
       e.lea(e.r8, e.StashXmm(0, i.src1));
-      e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShlI32));
+      e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShl<uint32_t>));
       e.vmovaps(i.dest, e.xmm0);
 
       e.L(end);
@@ -864,6 +854,23 @@ EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHL, VECTOR_SHL_V128);
 // ============================================================================
 // OPCODE_VECTOR_SHR
 // ============================================================================
+template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
+static __m128i EmulateVectorShr(void*, __m128i src1, __m128i src2) {
+  alignas(16) T value[16 / sizeof(T)];
+  alignas(16) T shamt[16 / sizeof(T)];
+
+  // Load SSE registers into a C array.
+  _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
+  _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
+
+  for (size_t i = 0; i < (16 / sizeof(T)); ++i) {
+    value[i] = value[i] >> (shamt[i] & ((sizeof(T) * 8) - 1));
+  }
+
+  // Store result and return it.
+  return _mm_load_si128(reinterpret_cast<__m128i*>(value));
+}
+
 struct VECTOR_SHR_V128
     : Sequence<VECTOR_SHR_V128, I<OPCODE_VECTOR_SHR, V128Op, V128Op, V128Op>> {
   static void Emit(X64Emitter& e, const EmitArgType& i) {
@@ -882,16 +889,7 @@ struct VECTOR_SHR_V128
         break;
     }
   }
-  static __m128i EmulateVectorShrI8(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint8_t value[16];
-    alignas(16) uint8_t shamt[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 16; ++i) {
-      value[i] = value[i] >> (shamt[i] & 0x7);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
+
   static void EmitInt8(X64Emitter& e, const EmitArgType& i) {
     // TODO(benvanik): native version (with shift magic).
     if (i.src2.is_constant) {
@@ -901,19 +899,10 @@ struct VECTOR_SHR_V128
       e.lea(e.r9, e.StashXmm(1, i.src2));
     }
     e.lea(e.r8, e.StashXmm(0, i.src1));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShrI8));
+    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<uint8_t>));
     e.vmovaps(i.dest, e.xmm0);
   }
-  static __m128i EmulateVectorShrI16(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint16_t value[8];
-    alignas(16) uint16_t shamt[8];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 8; ++i) {
-      value[i] = value[i] >> (shamt[i] & 0xF);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
+
   static void EmitInt16(X64Emitter& e, const EmitArgType& i) {
     if (i.src2.is_constant) {
       const auto& shamt = i.src2.constant();
@@ -960,21 +949,12 @@ struct VECTOR_SHR_V128
       e.lea(e.r9, e.StashXmm(1, i.src2));
     }
     e.lea(e.r8, e.StashXmm(0, i.src1));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShrI16));
+    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<uint16_t>));
     e.vmovaps(i.dest, e.xmm0);
 
     e.L(end);
   }
-  static __m128i EmulateVectorShrI32(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint32_t value[4];
-    alignas(16) uint32_t shamt[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 4; ++i) {
-      value[i] = value[i] >> (shamt[i] & 0x1F);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
+
   static void EmitInt32(X64Emitter& e, const EmitArgType& i) {
     if (i.src2.is_constant) {
       const auto& shamt = i.src2.constant();
@@ -1038,7 +1018,7 @@ struct VECTOR_SHR_V128
         e.lea(e.r9, e.StashXmm(1, i.src2));
       }
       e.lea(e.r8, e.StashXmm(0, i.src1));
-      e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShrI32));
+      e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<uint32_t>));
       e.vmovaps(i.dest, e.xmm0);
 
       e.L(end);
@@ -1052,15 +1032,21 @@ EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHR, VECTOR_SHR_V128);
 // ============================================================================
 struct VECTOR_SHA_V128
     : Sequence<VECTOR_SHA_V128, I<OPCODE_VECTOR_SHA, V128Op, V128Op, V128Op>> {
-  static __m128i EmulateVectorShaI8(void*, __m128i src1, __m128i src2) {
-    alignas(16) int8_t value[16];
-    alignas(16) int8_t shamt[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 16; ++i) {
-      value[i] = value[i] >> (shamt[i] & 0x7);
+  static void Emit(X64Emitter& e, const EmitArgType& i) {
+    switch (i.instr->flags) {
+      case INT8_TYPE:
+        EmitInt8(e, i);
+        break;
+      case INT16_TYPE:
+        EmitInt16(e, i);
+        break;
+      case INT32_TYPE:
+        EmitInt32(e, i);
+        break;
+      default:
+        assert_always();
+        break;
     }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
   }
 
   static void EmitInt8(X64Emitter& e, const EmitArgType& i) {
@@ -1072,19 +1058,8 @@ struct VECTOR_SHA_V128
       e.lea(e.r9, e.StashXmm(1, i.src2));
     }
     e.lea(e.r8, e.StashXmm(0, i.src1));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShaI8));
+    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<int8_t>));
     e.vmovaps(i.dest, e.xmm0);
-  }
-
-  static __m128i EmulateVectorShaI16(void*, __m128i src1, __m128i src2) {
-    alignas(16) int16_t value[8];
-    alignas(16) int16_t shamt[8];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 8; ++i) {
-      value[i] = value[i] >> (shamt[i] & 0xF);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
   }
 
   static void EmitInt16(X64Emitter& e, const EmitArgType& i) {
@@ -1133,21 +1108,10 @@ struct VECTOR_SHA_V128
       e.lea(e.r9, e.StashXmm(1, i.src2));
     }
     e.lea(e.r8, e.StashXmm(0, i.src1));
-    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShaI16));
+    e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<int16_t>));
     e.vmovaps(i.dest, e.xmm0);
 
     e.L(end);
-  }
-
-  static __m128i EmulateVectorShaI32(void*, __m128i src1, __m128i src2) {
-    alignas(16) int32_t value[4];
-    alignas(16) int32_t shamt[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 4; ++i) {
-      value[i] = value[i] >> (shamt[i] & 0x1F);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
   }
 
   static void EmitInt32(X64Emitter& e, const EmitArgType& i) {
@@ -1206,27 +1170,10 @@ struct VECTOR_SHA_V128
         e.lea(e.r9, e.StashXmm(1, i.src2));
       }
       e.lea(e.r8, e.StashXmm(0, i.src1));
-      e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShaI32));
+      e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<int32_t>));
       e.vmovaps(i.dest, e.xmm0);
 
       e.L(end);
-    }
-  }
-
-  static void Emit(X64Emitter& e, const EmitArgType& i) {
-    switch (i.instr->flags) {
-      case INT8_TYPE:
-        EmitInt8(e, i);
-        break;
-      case INT16_TYPE:
-        EmitInt16(e, i);
-        break;
-      case INT32_TYPE:
-        EmitInt32(e, i);
-        break;
-      default:
-        assert_always();
-        break;
     }
   }
 };
@@ -1235,40 +1182,27 @@ EMITTER_OPCODE_TABLE(OPCODE_VECTOR_SHA, VECTOR_SHA_V128);
 // ============================================================================
 // OPCODE_VECTOR_ROTATE_LEFT
 // ============================================================================
+template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
+static __m128i EmulateVectorRotateLeft(void*, __m128i src1, __m128i src2) {
+  alignas(16) T value[16 / sizeof(T)];
+  alignas(16) T shamt[16 / sizeof(T)];
+
+  // Load SSE registers into a C array.
+  _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
+  _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
+
+  for (size_t i = 0; i < (16 / sizeof(T)); ++i) {
+    value[i] = xe::rotate_left<T>(value[i], shamt[i] & ((sizeof(T) * 8) - 1));
+  }
+
+  // Store result and return it.
+  return _mm_load_si128(reinterpret_cast<__m128i*>(value));
+}
+
 // TODO(benvanik): AVX512 has a native variable rotate (rolv).
 struct VECTOR_ROTATE_LEFT_V128
     : Sequence<VECTOR_ROTATE_LEFT_V128,
                I<OPCODE_VECTOR_ROTATE_LEFT, V128Op, V128Op, V128Op>> {
-  static __m128i EmulateVectorRotateLeftI8(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint8_t value[16];
-    alignas(16) uint8_t shamt[16];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 16; ++i) {
-      value[i] = xe::rotate_left<uint8_t>(value[i], shamt[i] & 0x7);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
-  static __m128i EmulateVectorRotateLeftI16(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint16_t value[8];
-    alignas(16) uint16_t shamt[8];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 8; ++i) {
-      value[i] = xe::rotate_left<uint16_t>(value[i], shamt[i] & 0xF);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
-  static __m128i EmulateVectorRotateLeftI32(void*, __m128i src1, __m128i src2) {
-    alignas(16) uint32_t value[4];
-    alignas(16) uint32_t shamt[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(value), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(shamt), src2);
-    for (size_t i = 0; i < 4; ++i) {
-      value[i] = xe::rotate_left<uint32_t>(value[i], shamt[i] & 0x1F);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     switch (i.instr->flags) {
       case INT8_TYPE:
@@ -1280,7 +1214,8 @@ struct VECTOR_ROTATE_LEFT_V128
         } else {
           e.lea(e.r9, e.StashXmm(1, i.src2));
         }
-        e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorRotateLeftI8));
+        e.CallNativeSafe(
+            reinterpret_cast<void*>(EmulateVectorRotateLeft<uint8_t>));
         e.vmovaps(i.dest, e.xmm0);
         break;
       case INT16_TYPE:
@@ -1292,7 +1227,8 @@ struct VECTOR_ROTATE_LEFT_V128
         } else {
           e.lea(e.r9, e.StashXmm(1, i.src2));
         }
-        e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorRotateLeftI16));
+        e.CallNativeSafe(
+            reinterpret_cast<void*>(EmulateVectorRotateLeft<uint16_t>));
         e.vmovaps(i.dest, e.xmm0);
         break;
       case INT32_TYPE: {
@@ -1319,7 +1255,8 @@ struct VECTOR_ROTATE_LEFT_V128
           } else {
             e.lea(e.r9, e.StashXmm(1, i.src2));
           }
-          e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorRotateLeftI32));
+          e.CallNativeSafe(
+              reinterpret_cast<void*>(EmulateVectorRotateLeft<uint32_t>));
           e.vmovaps(i.dest, e.xmm0);
         }
         break;
@@ -1335,35 +1272,28 @@ EMITTER_OPCODE_TABLE(OPCODE_VECTOR_ROTATE_LEFT, VECTOR_ROTATE_LEFT_V128);
 // ============================================================================
 // OPCODE_VECTOR_AVERAGE
 // ============================================================================
+template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
+static __m128i EmulateVectorAverage(void*, __m128i src1, __m128i src2) {
+  alignas(16) T src1v[16 / sizeof(T)];
+  alignas(16) T src2v[16 / sizeof(T)];
+  alignas(16) T value[16 / sizeof(T)];
+
+  // Load SSE registers into a C array.
+  _mm_store_si128(reinterpret_cast<__m128i*>(src1v), src1);
+  _mm_store_si128(reinterpret_cast<__m128i*>(src2v), src2);
+
+  for (size_t i = 0; i < (16 / sizeof(T)); ++i) {
+    auto t = (uint64_t(src1v[i]) + uint64_t(src2v[i]) + 1) / 2;
+    value[i] = T(t);
+  }
+
+  // Store result and return it.
+  return _mm_load_si128(reinterpret_cast<__m128i*>(value));
+}
+
 struct VECTOR_AVERAGE
     : Sequence<VECTOR_AVERAGE,
                I<OPCODE_VECTOR_AVERAGE, V128Op, V128Op, V128Op>> {
-  static __m128i EmulateVectorAverageUnsignedI32(void*, __m128i src1,
-                                                 __m128i src2) {
-    alignas(16) uint32_t src1v[4];
-    alignas(16) uint32_t src2v[4];
-    alignas(16) uint32_t value[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(src1v), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(src2v), src2);
-    for (size_t i = 0; i < 4; ++i) {
-      auto t = (uint64_t(src1v[i]) + uint64_t(src2v[i]) + 1) >> 1;
-      value[i] = uint32_t(t);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
-  static __m128i EmulateVectorAverageSignedI32(void*, __m128i src1,
-                                               __m128i src2) {
-    alignas(16) int32_t src1v[4];
-    alignas(16) int32_t src2v[4];
-    alignas(16) int32_t value[4];
-    _mm_store_si128(reinterpret_cast<__m128i*>(src1v), src1);
-    _mm_store_si128(reinterpret_cast<__m128i*>(src2v), src2);
-    for (size_t i = 0; i < 4; ++i) {
-      auto t = (int64_t(src1v[i]) + int64_t(src2v[i]) + 1) >> 1;
-      value[i] = int32_t(t);
-    }
-    return _mm_load_si128(reinterpret_cast<__m128i*>(value));
-  }
   static void Emit(X64Emitter& e, const EmitArgType& i) {
     EmitCommutativeBinaryXmmOp(
         e, i,
@@ -1398,7 +1328,7 @@ struct VECTOR_AVERAGE
                 }
                 e.lea(e.r8, e.StashXmm(0, i.src1));
                 e.CallNativeSafe(
-                    reinterpret_cast<void*>(EmulateVectorAverageUnsignedI32));
+                    reinterpret_cast<void*>(EmulateVectorAverage<uint32_t>));
                 e.vmovaps(i.dest, e.xmm0);
               } else {
                 if (i.src2.is_constant) {
@@ -1409,7 +1339,7 @@ struct VECTOR_AVERAGE
                 }
                 e.lea(e.r8, e.StashXmm(0, i.src1));
                 e.CallNativeSafe(
-                    reinterpret_cast<void*>(EmulateVectorAverageSignedI32));
+                    reinterpret_cast<void*>(EmulateVectorAverage<int32_t>));
                 e.vmovaps(i.dest, e.xmm0);
               }
               break;

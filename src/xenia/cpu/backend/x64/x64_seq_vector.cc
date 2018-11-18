@@ -710,11 +710,11 @@ struct VECTOR_SHL_V128
     // TODO(benvanik): native version (with shift magic).
     if (i.src2.is_constant) {
       e.LoadConstantXmm(e.xmm0, i.src2.constant());
-      e.lea(e.r9, e.StashXmm(1, e.xmm0));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
     } else {
-      e.lea(e.r9, e.StashXmm(1, i.src2));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, i.src1));
+    e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
     e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShl<uint8_t>));
     e.vmovaps(i.dest, e.xmm0);
   }
@@ -768,11 +768,11 @@ struct VECTOR_SHL_V128
     e.L(emu);
     if (i.src2.is_constant) {
       e.LoadConstantXmm(e.xmm0, i.src2.constant());
-      e.lea(e.r9, e.StashXmm(1, e.xmm0));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
     } else {
-      e.lea(e.r9, e.StashXmm(1, i.src2));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, src1));
+    e.lea(e.GetNativeParam(0), e.StashXmm(0, src1));
     e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShl<uint16_t>));
     e.vmovaps(i.dest, e.xmm0);
 
@@ -837,11 +837,11 @@ struct VECTOR_SHL_V128
       e.L(emu);
       if (i.src2.is_constant) {
         e.LoadConstantXmm(e.xmm0, i.src2.constant());
-        e.lea(e.r9, e.StashXmm(1, e.xmm0));
+        e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
       } else {
-        e.lea(e.r9, e.StashXmm(1, i.src2));
+        e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
       }
-      e.lea(e.r8, e.StashXmm(0, i.src1));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShl<uint32_t>));
       e.vmovaps(i.dest, e.xmm0);
 
@@ -894,11 +894,11 @@ struct VECTOR_SHR_V128
     // TODO(benvanik): native version (with shift magic).
     if (i.src2.is_constant) {
       e.LoadConstantXmm(e.xmm0, i.src2.constant());
-      e.lea(e.r9, e.StashXmm(1, e.xmm0));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
     } else {
-      e.lea(e.r9, e.StashXmm(1, i.src2));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, i.src1));
+    e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
     e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<uint8_t>));
     e.vmovaps(i.dest, e.xmm0);
   }
@@ -944,11 +944,11 @@ struct VECTOR_SHR_V128
     e.L(emu);
     if (i.src2.is_constant) {
       e.LoadConstantXmm(e.xmm0, i.src2.constant());
-      e.lea(e.r9, e.StashXmm(1, e.xmm0));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
     } else {
-      e.lea(e.r9, e.StashXmm(1, i.src2));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, i.src1));
+    e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
     e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<uint16_t>));
     e.vmovaps(i.dest, e.xmm0);
 
@@ -1013,11 +1013,11 @@ struct VECTOR_SHR_V128
       e.L(emu);
       if (i.src2.is_constant) {
         e.LoadConstantXmm(e.xmm0, i.src2.constant());
-        e.lea(e.r9, e.StashXmm(1, e.xmm0));
+        e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
       } else {
-        e.lea(e.r9, e.StashXmm(1, i.src2));
+        e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
       }
-      e.lea(e.r8, e.StashXmm(0, i.src1));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<uint32_t>));
       e.vmovaps(i.dest, e.xmm0);
 
@@ -1053,11 +1053,11 @@ struct VECTOR_SHA_V128
     // TODO(benvanik): native version (with shift magic).
     if (i.src2.is_constant) {
       e.LoadConstantXmm(e.xmm0, i.src2.constant());
-      e.lea(e.r9, e.StashXmm(1, e.xmm0));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
     } else {
-      e.lea(e.r9, e.StashXmm(1, i.src2));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, i.src1));
+    e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
     e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<int8_t>));
     e.vmovaps(i.dest, e.xmm0);
   }
@@ -1103,11 +1103,11 @@ struct VECTOR_SHA_V128
     e.L(emu);
     if (i.src2.is_constant) {
       e.LoadConstantXmm(e.xmm0, i.src2.constant());
-      e.lea(e.r9, e.StashXmm(1, e.xmm0));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
     } else {
-      e.lea(e.r9, e.StashXmm(1, i.src2));
+      e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
     }
-    e.lea(e.r8, e.StashXmm(0, i.src1));
+    e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
     e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<int16_t>));
     e.vmovaps(i.dest, e.xmm0);
 
@@ -1165,11 +1165,11 @@ struct VECTOR_SHA_V128
       e.L(emu);
       if (i.src2.is_constant) {
         e.LoadConstantXmm(e.xmm0, i.src2.constant());
-        e.lea(e.r9, e.StashXmm(1, e.xmm0));
+        e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
       } else {
-        e.lea(e.r9, e.StashXmm(1, i.src2));
+        e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
       }
-      e.lea(e.r8, e.StashXmm(0, i.src1));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateVectorShr<int32_t>));
       e.vmovaps(i.dest, e.xmm0);
 
@@ -1207,12 +1207,12 @@ struct VECTOR_ROTATE_LEFT_V128
     switch (i.instr->flags) {
       case INT8_TYPE:
         // TODO(benvanik): native version (with shift magic).
-        e.lea(e.r8, e.StashXmm(0, i.src1));
+        e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
         if (i.src2.is_constant) {
           e.LoadConstantXmm(e.xmm0, i.src2.constant());
-          e.lea(e.r9, e.StashXmm(1, e.xmm0));
+          e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
         } else {
-          e.lea(e.r9, e.StashXmm(1, i.src2));
+          e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
         }
         e.CallNativeSafe(
             reinterpret_cast<void*>(EmulateVectorRotateLeft<uint8_t>));
@@ -1220,12 +1220,12 @@ struct VECTOR_ROTATE_LEFT_V128
         break;
       case INT16_TYPE:
         // TODO(benvanik): native version (with shift magic).
-        e.lea(e.r8, e.StashXmm(0, i.src1));
+        e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
         if (i.src2.is_constant) {
           e.LoadConstantXmm(e.xmm0, i.src2.constant());
-          e.lea(e.r9, e.StashXmm(1, e.xmm0));
+          e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
         } else {
-          e.lea(e.r9, e.StashXmm(1, i.src2));
+          e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
         }
         e.CallNativeSafe(
             reinterpret_cast<void*>(EmulateVectorRotateLeft<uint16_t>));
@@ -1248,12 +1248,12 @@ struct VECTOR_ROTATE_LEFT_V128
           e.vpor(i.dest, e.xmm1);
         } else {
           // TODO(benvanik): non-AVX2 native version.
-          e.lea(e.r8, e.StashXmm(0, i.src1));
+          e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
           if (i.src2.is_constant) {
             e.LoadConstantXmm(e.xmm0, i.src2.constant());
-            e.lea(e.r9, e.StashXmm(1, e.xmm0));
+            e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
           } else {
-            e.lea(e.r9, e.StashXmm(1, i.src2));
+            e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
           }
           e.CallNativeSafe(
               reinterpret_cast<void*>(EmulateVectorRotateLeft<uint32_t>));
@@ -1322,22 +1322,22 @@ struct VECTOR_AVERAGE
               if (is_unsigned) {
                 if (i.src2.is_constant) {
                   e.LoadConstantXmm(e.xmm0, i.src2.constant());
-                  e.lea(e.r9, e.StashXmm(1, e.xmm0));
+                  e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
                 } else {
-                  e.lea(e.r9, e.StashXmm(1, i.src2));
+                  e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
                 }
-                e.lea(e.r8, e.StashXmm(0, i.src1));
+                e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
                 e.CallNativeSafe(
                     reinterpret_cast<void*>(EmulateVectorAverage<uint32_t>));
                 e.vmovaps(i.dest, e.xmm0);
               } else {
                 if (i.src2.is_constant) {
                   e.LoadConstantXmm(e.xmm0, i.src2.constant());
-                  e.lea(e.r9, e.StashXmm(1, e.xmm0));
+                  e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
                 } else {
-                  e.lea(e.r9, e.StashXmm(1, i.src2));
+                  e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
                 }
-                e.lea(e.r8, e.StashXmm(0, i.src1));
+                e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
                 e.CallNativeSafe(
                     reinterpret_cast<void*>(EmulateVectorAverage<int32_t>));
                 e.vmovaps(i.dest, e.xmm0);
@@ -1872,7 +1872,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       } else {
         src = i.src1;
       }
-      e.lea(e.r8, e.StashXmm(0, src));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, src));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
       e.vmovaps(i.dest, e.xmm0);
     }
@@ -1912,7 +1912,7 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
       } else {
         src = i.src1;
       }
-      e.lea(e.r8, e.StashXmm(0, src));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, src));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_4));
       e.vmovaps(i.dest, e.xmm0);
     }
@@ -2016,19 +2016,19 @@ struct PACK : Sequence<PACK, I<OPCODE_PACK, V128Op, V128Op, V128Op>> {
           // unsigned -> unsigned + saturate
           if (i.src2.is_constant) {
             e.LoadConstantXmm(e.xmm0, i.src2.constant());
-            e.lea(e.r9, e.StashXmm(1, e.xmm0));
+            e.lea(e.GetNativeParam(1), e.StashXmm(1, e.xmm0));
           } else {
-            e.lea(e.r9, e.StashXmm(1, i.src2));
+            e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
           }
-          e.lea(e.r8, e.StashXmm(0, i.src1));
+          e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
           e.CallNativeSafe(
               reinterpret_cast<void*>(EmulatePack8_IN_16_UN_UN_SAT));
           e.vmovaps(i.dest, e.xmm0);
           e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
         } else {
           // unsigned -> unsigned
-          e.lea(e.r9, e.StashXmm(1, i.src2));
-          e.lea(e.r8, e.StashXmm(0, i.src1));
+          e.lea(e.GetNativeParam(1), e.StashXmm(1, i.src2));
+          e.lea(e.GetNativeParam(0), e.StashXmm(0, i.src1));
           e.CallNativeSafe(reinterpret_cast<void*>(EmulatePack8_IN_16_UN_UN));
           e.vmovaps(i.dest, e.xmm0);
           e.vpshufb(i.dest, i.dest, e.GetXmmConstPtr(XMMByteOrderMask));
@@ -2280,7 +2280,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
       } else {
         src = i.src1;
       }
-      e.lea(e.r8, e.StashXmm(0, src));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, src));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_2));
       e.vmovaps(i.dest, e.xmm0);
     }
@@ -2316,7 +2316,7 @@ struct UNPACK : Sequence<UNPACK, I<OPCODE_UNPACK, V128Op, V128Op>> {
       } else {
         src = i.src1;
       }
-      e.lea(e.r8, e.StashXmm(0, src));
+      e.lea(e.GetNativeParam(0), e.StashXmm(0, src));
       e.CallNativeSafe(reinterpret_cast<void*>(EmulateFLOAT16_4));
       e.vmovaps(i.dest, e.xmm0);
     }

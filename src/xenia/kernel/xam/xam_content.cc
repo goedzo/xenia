@@ -29,7 +29,7 @@ static const DeviceInfo dummy_device_info_ = {
     0xF00D0000,
     1,
     600ull * 1024ull * 1024ull * 1024ull,  // 60GB
-    36ull * 1024ull * 1024ull * 1024ull,  // 36GB, so it looks a little used.
+    36ull * 1024ull * 1024ull * 1024ull,   // 36GB, so it looks a little used.
     L"Dummy HDD",
 };
 

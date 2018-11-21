@@ -1081,7 +1081,7 @@ bool TextureCache::UploadTexture(VkCommandBuffer command_buffer,
     // Depth buffers can have mips too
     int mip_levels = src.mip_levels();
     for (int i = 0; i < mip_levels; i++) {
-        copy_regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      copy_regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
     }
   }
 

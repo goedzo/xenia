@@ -143,7 +143,7 @@ DiscImageDevice::Error DiscImageDevice::ReadAllEntries(
 bool DiscImageDevice::ReadEntry(ParseState* state, const uint8_t* buffer,
                                 uint16_t entry_ordinal,
                                 DiscImageEntry* parent) {
-  const uint8_t* p = buffer + (entry_ordinal * 4);
+  const uint16_t* p = (uint16_t)buffer + (entry_ordinal * 4);
 
   uint16_t node_l = xe::load<uint16_t>(p + 0);
   uint16_t node_r = xe::load<uint16_t>(p + 2);

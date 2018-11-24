@@ -11,6 +11,7 @@ test_suite("xenia-cpu-tests", project_root, ".", {
     "xenia-core",
     "xenia-cpu",
     "xenia-cpu-backend-x64",
+    "libarchive",
 
     -- TODO(benvanik): cut these dependencies?
     "xenia-kernel",

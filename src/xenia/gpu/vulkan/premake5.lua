@@ -57,6 +57,7 @@ project("xenia-gpu-vulkan-trace-viewer")
     "xenia-ui-vulkan",
     "xenia-vfs",
     "xxhash",
+    "libarchive",
   })
   flags({
     "WinMain",  -- Use WinMain instead of main.
@@ -129,6 +130,7 @@ project("xenia-gpu-vulkan-trace-dump")
     "xenia-ui-vulkan",
     "xenia-vfs",
     "xxhash",
+    "libarchive",
   })
   defines({
   })

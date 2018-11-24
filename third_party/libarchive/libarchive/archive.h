@@ -389,7 +389,15 @@ typedef const char* archive_passphrase_callback(struct archive*,
  *      data for entries of interest.
  *   5) Call archive_read_free to end processing.
  */
-__LA_DECL struct archive	*archive_read_new(void);
+
+//This function must be exported to CPP, so allow this
+#ifdef __cplusplus
+extern "C" {
+#endif
+__LA_DECL struct archive* archive_read_new(void);
+#ifdef __cplusplus
+}
+#endif
 
 /*
  * The archive_read_support_XXX calls enable auto-detect for this

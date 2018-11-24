@@ -20,9 +20,6 @@
 namespace xe {
 namespace filesystem {
 
-
-
-
 // Canonicalizes a path, removing ..'s.
 std::string CanonicalizePath(const std::string& original_path);
 
@@ -44,8 +41,6 @@ bool DeleteFolder(const std::wstring& path);
 
 // Returns true if the given path exists and is a folder.
 bool IsFolder(const std::wstring& path);
-
-
 
 // Creates an empty file at the given path.
 bool CreateFileXenia(const std::wstring& path);

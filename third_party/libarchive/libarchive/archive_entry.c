@@ -2035,7 +2035,7 @@ main(int argc, char **argv)
 
 	wprintf(L"set=0x%lX clear=0x%lX remainder='%ls'\n", set, clear, remainder);
 
-	wprintf(L"new flags='%s'\n", archive_entry_fflags_text(entry));
+	//wprintf(L"new flags='%s'\n", archive_entry_fflags_text(entry));
 	return (0);
 }
 #endif

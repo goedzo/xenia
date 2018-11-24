@@ -26,6 +26,13 @@
  * $FreeBSD: head/lib/libarchive/archive_entry.h 201096 2009-12-28 02:41:27Z kientzle $
  */
 
+#pragma once
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
 #ifndef ARCHIVE_ENTRY_H_INCLUDED
 #define	ARCHIVE_ENTRY_H_INCLUDED
 
@@ -701,3 +708,7 @@ __LA_DECL struct archive_entry *archive_entry_partial_links(
 #undef __LA_DECL
 
 #endif /* !ARCHIVE_ENTRY_H_INCLUDED */
+
+#if defined(__cplusplus)
+}
+#endif

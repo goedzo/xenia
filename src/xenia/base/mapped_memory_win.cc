@@ -18,20 +18,17 @@
 #include "xenia/base/memory.h"
 #include "xenia/base/platform_win.h"
 
-
 namespace xe {
 
 class Win32MappedMemory : public MappedMemory {
  public:
-
-
   Win32MappedMemory(const std::wstring& path, Mode mode)
       : MappedMemory(path, mode) {
-    //isArchived = false;
+    // isArchived = false;
   }
 
   ~Win32MappedMemory() override {
-    //isArchived = false;
+    // isArchived = false;
     if (data_) {
       UnmapViewOfFile(data_);
     }
@@ -161,7 +158,6 @@ std::unique_ptr<MappedMemory> MappedMemory::Open(const std::wstring& path,
   return std::move(mm);
 }
 
-
 std::unique_ptr<MappedMemory> MappedMemory::OpenZip(const std::wstring& path,
                                                     Mode mode, size_t offset,
                                                     size_t length) {
@@ -223,12 +219,12 @@ std::unique_ptr<MappedMemory> MappedMemory::OpenZip(const std::wstring& path,
   while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
     // Check for iso files
     const char* archiveName = archive_entry_pathname(entry);
-	//Convert this to wstring
+        //Convert this to wstring
     static std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
     const std::wstring& cArchiveName =
         std::wstring(converter.from_bytes(archiveName));
 
-	auto last_dot = cArchiveName.find_last_of('.');
+        auto last_dot = cArchiveName.find_last_of('.');
     auto extension = cArchiveName.substr(last_dot);
     std::transform(extension.begin(), extension.end(), extension.begin(),
                    tolower);

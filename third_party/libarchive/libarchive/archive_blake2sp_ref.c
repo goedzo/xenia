@@ -77,7 +77,7 @@ static int blake2sp_init_root( blake2s_state *S, size_t outlen, size_t keylen )
 
 int blake2sp_init( blake2sp_state *S, size_t outlen )
 {
-  size_t i;
+  uint32_t i;
 
   if( !outlen || outlen > BLAKE2S_OUTBYTES ) return -1;
 
@@ -98,7 +98,7 @@ int blake2sp_init( blake2sp_state *S, size_t outlen )
 
 int blake2sp_init_key( blake2sp_state *S, size_t outlen, const void *key, size_t keylen )
 {
-  size_t i;
+  uint32_t i;
 
   if( !outlen || outlen > BLAKE2S_OUTBYTES ) return -1;
 
@@ -216,7 +216,7 @@ int blake2sp( void *out, size_t outlen, const void *in, size_t inlen, const void
   uint8_t hash[PARALLELISM_DEGREE][BLAKE2S_OUTBYTES];
   blake2s_state S[PARALLELISM_DEGREE][1];
   blake2s_state FS[1];
-  size_t i;
+  uint32_t i;
 
   /* Verify parameters */
   if ( NULL == in && inlen > 0 ) return -1;
@@ -258,7 +258,7 @@ int blake2sp( void *out, size_t outlen, const void *in, size_t inlen, const void
 #endif
     size_t inlen__ = inlen;
     const unsigned char *in__ = ( const unsigned char * )in;
-    in__ += i * BLAKE2S_BLOCKBYTES;
+    in__ += (unsigned __int64)i * BLAKE2S_BLOCKBYTES;
 
     while( inlen__ >= PARALLELISM_DEGREE * BLAKE2S_BLOCKBYTES )
     {
@@ -267,9 +267,9 @@ int blake2sp( void *out, size_t outlen, const void *in, size_t inlen, const void
       inlen__ -= PARALLELISM_DEGREE * BLAKE2S_BLOCKBYTES;
     }
 
-    if( inlen__ > i * BLAKE2S_BLOCKBYTES )
+    if (inlen__ > (unsigned __int64)i * BLAKE2S_BLOCKBYTES)
     {
-      const size_t left = inlen__ - i * BLAKE2S_BLOCKBYTES;
+      const size_t left = inlen__ - (unsigned __int64)i * BLAKE2S_BLOCKBYTES;
       const size_t len = left <= BLAKE2S_BLOCKBYTES ? left : BLAKE2S_BLOCKBYTES;
       blake2s_update( S[i], in__, len );
     }

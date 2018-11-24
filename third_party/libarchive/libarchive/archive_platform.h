@@ -36,6 +36,15 @@
  * since they obfuscate the code.
  */
 
+
+#pragma once
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
+
 // < Some Xenia Specific fixes>
 //
 // Important! Under "Project -> Properties -> C/C++ -> Preprocessor -> 
@@ -60,6 +69,7 @@
 #define HAVE_WCSCPY 1
 #define HAVE_WCSLEN 1
 #define HAVE__GET_TIMEZONE 1
+#define HAVE__FSEEKI64 1
 
 #define TEST 1
 
@@ -193,37 +203,37 @@
 
 /* Some platforms lack the standard *_MAX definitions. */
 #if !HAVE_DECL_SIZE_MAX
-#define SIZE_MAX (~(size_t)0)
+//#define SIZE_MAX (~(size_t)0)
 #endif
 #if !HAVE_DECL_SSIZE_MAX
 #define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
 #endif
 #if !HAVE_DECL_UINT32_MAX
-#define UINT32_MAX (~(uint32_t)0)
+//#define UINT32_MAX (~(uint32_t)0)
 #endif
 #if !HAVE_DECL_INT32_MAX
-#define INT32_MAX ((int32_t)(UINT32_MAX >> 1))
+//#define INT32_MAX ((int32_t)(UINT32_MAX >> 1))
 #endif
 #if !HAVE_DECL_INT32_MIN
-#define INT32_MIN ((int32_t)(~INT32_MAX))
+//#define INT32_MIN ((int32_t)(~INT32_MAX))
 #endif
 #if !HAVE_DECL_UINT64_MAX
-#define UINT64_MAX (~(uint64_t)0)
+//#define UINT64_MAX (~(uint64_t)0)
 #endif
 #if !HAVE_DECL_INT64_MAX
-#define INT64_MAX ((int64_t)(UINT64_MAX >> 1))
+//#define INT64_MAX ((int64_t)(UINT64_MAX >> 1))
 #endif
 #if !HAVE_DECL_INT64_MIN
-#define INT64_MIN ((int64_t)(~INT64_MAX))
+//#define INT64_MIN ((int64_t)(~INT64_MAX))
 #endif
 #if !HAVE_DECL_UINTMAX_MAX
-#define UINTMAX_MAX (~(uintmax_t)0)
+//#define UINTMAX_MAX (~(uintmax_t)0)
 #endif
 #if !HAVE_DECL_INTMAX_MAX
-#define INTMAX_MAX ((intmax_t)(UINTMAX_MAX >> 1))
+//#define INTMAX_MAX ((intmax_t)(UINTMAX_MAX >> 1))
 #endif
 #if !HAVE_DECL_INTMAX_MIN
-#define INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
+//#define INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
 #endif
 
 /*
@@ -275,3 +285,7 @@
 #endif
 
 #endif /* !ARCHIVE_PLATFORM_H_INCLUDED */
+
+#if defined(__cplusplus)
+}
+#endif

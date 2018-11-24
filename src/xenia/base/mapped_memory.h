@@ -26,7 +26,6 @@
 
 // </LibArchive>
 
-
 namespace xe {
 class MappedMemory {
  public:

@@ -1,5 +1,10 @@
 /* config.h.  Generated from config.h.in by configure.  */
 /* config.h.in.  Generated from configure.ac by autoheader.  */
+#pragma once
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 /* Darwin ACL support */
 /* #undef ARCHIVE_ACL_DARWIN */
@@ -1387,3 +1392,8 @@
 
           /* Define to `unsigned int' if <sys/types.h> does not define. */
           /* #undef uintptr_t */
+
+
+#if defined(__cplusplus)
+}
+#endif

@@ -36,6 +36,7 @@ project("xenia-app")
     "xenia-ui-vulkan",
     "xenia-vfs",
     "xxhash",
+    "libarchive",
   })
   flags({
     "WinMain",  -- Use WinMain instead of main.

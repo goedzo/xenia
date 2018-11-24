@@ -26,6 +26,13 @@
  * Exp $
  */
 
+#pragma once
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
 #ifndef ARCHIVE_H_INCLUDED
 #define ARCHIVE_H_INCLUDED
 
@@ -147,9 +154,6 @@ typedef ssize_t la_ssize_t;
 #define __LA_DEPRECATED
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /*
  * The version number is provided as both a macro and a function.
@@ -1192,11 +1196,13 @@ __LA_DECL int archive_match_include_gname_w(struct archive*, const wchar_t*);
 /* Convenience function to sort a NULL terminated list of strings */
 __LA_DECL int archive_utility_string_sort(char**);
 
-#ifdef __cplusplus
-}
-#endif
-
 /* These are meaningless outside of this header. */
 #undef __LA_DECL
 
 #endif /* !ARCHIVE_H_INCLUDED */
+
+
+
+#if defined(__cplusplus)
+}
+#endif

@@ -25,6 +25,7 @@ project("xenia-vfs-dump")
     "gflags",
     "xenia-base",
     "xenia-vfs",
+    "libarchive",
   })
   flags({
     -- "WinMain",  -- Use WinMain instead of main.

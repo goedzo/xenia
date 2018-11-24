@@ -20,6 +20,9 @@
 namespace xe {
 namespace filesystem {
 
+
+
+
 // Canonicalizes a path, removing ..'s.
 std::string CanonicalizePath(const std::string& original_path);
 
@@ -42,8 +45,10 @@ bool DeleteFolder(const std::wstring& path);
 // Returns true if the given path exists and is a folder.
 bool IsFolder(const std::wstring& path);
 
+
+
 // Creates an empty file at the given path.
-bool CreateFile(const std::wstring& path);
+bool CreateFileXenia(const std::wstring& path);
 
 // Opens the file at the given path with the specified mode.
 // This behaves like fopen and the returned handle can be used with stdio.
@@ -51,7 +56,7 @@ FILE* OpenFile(const std::wstring& path, const char* mode);
 
 // Deletes the file at the given path.
 // Returns true if the file was found and removed.
-bool DeleteFile(const std::wstring& path);
+bool DeleteFileXenia(const std::wstring& path);
 
 struct FileAccess {
   // Implies kFileReadData.

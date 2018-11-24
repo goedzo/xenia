@@ -18,14 +18,20 @@
 #include "xenia/base/memory.h"
 #include "xenia/base/platform_win.h"
 
+
 namespace xe {
 
 class Win32MappedMemory : public MappedMemory {
  public:
+
+
   Win32MappedMemory(const std::wstring& path, Mode mode)
-      : MappedMemory(path, mode) {}
+      : MappedMemory(path, mode) {
+    //isArchived = false;
+  }
 
   ~Win32MappedMemory() override {
+    //isArchived = false;
     if (data_) {
       UnmapViewOfFile(data_);
     }
@@ -153,6 +159,104 @@ std::unique_ptr<MappedMemory> MappedMemory::Open(const std::wstring& path,
   }
 
   return std::move(mm);
+}
+
+
+std::unique_ptr<MappedMemory> MappedMemory::OpenZip(const std::wstring& path,
+                                                    Mode mode, size_t offset,
+                                                    size_t length) {
+  DWORD file_access = 0;
+  DWORD file_share = 0;
+  DWORD create_mode = 0;
+  DWORD mapping_protect = 0;
+  DWORD view_access = 0;
+  switch (mode) {
+    case Mode::kRead:
+      file_access |= GENERIC_READ;
+      file_share |= FILE_SHARE_READ;
+      create_mode |= OPEN_EXISTING;
+      mapping_protect |= PAGE_READONLY;
+      view_access |= FILE_MAP_READ;
+      break;
+    case Mode::kReadWrite:
+      file_access |= GENERIC_READ | GENERIC_WRITE;
+      file_share |= 0;
+      create_mode |= OPEN_EXISTING;
+      mapping_protect |= PAGE_READWRITE;
+      view_access |= FILE_MAP_READ | FILE_MAP_WRITE;
+      break;
+  }
+
+  SYSTEM_INFO system_info;
+  GetSystemInfo(&system_info);
+
+  const size_t aligned_offset =
+      offset & ~static_cast<size_t>(system_info.dwAllocationGranularity - 1);
+  const size_t aligned_length = length + (offset - aligned_offset);
+
+  auto mm = std::make_unique<Win32MappedMemory>(path, mode);
+  mm->view_access_ = view_access;
+
+  // Open the archive
+  struct archive* a;
+  a = archive_read_new();
+  /*
+  struct archive_entry* entry;
+  int r;
+  archive_read_support_filter_all(a);
+  archive_read_support_format_all(a);
+
+  // Convert to Archive compatible c string
+  using convert_type = std::codecvt_utf8<wchar_t>;
+  std::wstring_convert<convert_type, wchar_t> converter;
+  std::string zipPath = converter.to_bytes(path);
+  r = archive_read_open_filename(a, zipPath.c_str(), 10240);
+  if (r != ARCHIVE_OK) {
+    XELOGE("Zipped Disc image is an incorrect archive");
+    return nullptr;
+  }
+
+
+
+
+  // Loop through all files inside this archive
+  while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+    // Check for iso files
+    const char* archiveName = archive_entry_pathname(entry);
+	//Convert this to wstring
+    static std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+    const std::wstring& cArchiveName =
+        std::wstring(converter.from_bytes(archiveName));
+
+	auto last_dot = cArchiveName.find_last_of('.');
+    auto extension = cArchiveName.substr(last_dot);
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   tolower);
+    if (extension == L".iso") {
+      // Prepare MM to deal with zip streaming
+
+      int isoStream = archive_read_extract(a, entry, 0);
+      if (isoStream == ARCHIVE_OK) {
+        // Let mm know it is dealing with an archive now
+        mm->isArchived = true;
+        //                mm->currentArchive = a;
+        //         mm->currentArchiveEntry = entry;
+
+        if (length) {
+          mm->size_ = aligned_length;
+        } else {
+          mm->size_ = archive_entry_size(entry) - aligned_offset;
+        }
+        return std::move(mm);
+      } else {
+        // This is an  errornouse archive.
+        return nullptr;
+      }
+    }
+  }
+  // No ISO found in this zip, so return
+  */
+  return nullptr;
 }
 
 class Win32ChunkedMappedMemoryWriter : public ChunkedMappedMemoryWriter {

@@ -294,6 +294,7 @@ void EmulatorWindow::FileOpen() {
       {L"Supported Files", L"*.iso;*.xex;*.xcp;*.*"},
       {L"Disc Image (*.iso)", L"*.iso"},
       {L"Xbox Executable (*.xex)", L"*.xex"},
+      {L"Zipped Iso Image (*.zip)", L"*.zip"},
       //{ L"Content Package (*.xcp)", L"*.xcp" },
       {L"All Files (*.*)", L"*.*"},
   });

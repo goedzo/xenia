@@ -393,7 +393,8 @@ struct X_OBJECT_ATTRIBUTES {
 
 // https://msdn.microsoft.com/en-us/library/windows/desktop/aa363082.aspx
 typedef struct {
-  xe::be<uint32_t> exception_code;
+  //When xcept.h is included, this one will be used:
+  xe::be<uint32_t> _exception_code;
   xe::be<uint32_t> exception_flags;
   xe::be<uint32_t> exception_record;
   xe::be<uint32_t> exception_address;

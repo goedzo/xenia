@@ -22,7 +22,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $FreeBSD: head/lib/libarchive/archive_platform.h 201090 2009-12-28 02:22:04Z kientzle $
+ * $FreeBSD: head/lib/libarchive/archive_platform.h 201090 2009-12-28 02:22:04Z
+ * kientzle $
  */
 
 /* !!ONLY FOR USE INTERNALLY TO LIBARCHIVE!! */
@@ -35,11 +36,82 @@
  * since they obfuscate the code.
  */
 
+// < Some Xenia Specific fixes>
+//
+// Important! Under "Project -> Properties -> C/C++ -> Preprocessor -> 
+// Preprocessor Definitions" add _CRT_SECURE_NO_WARNINGS
+
+
+#define HAVE_CONFIG_H 1
+
+#ifdef _WIN64
+#define ssize_t __int64
+#else
+#define ssize_t long
+#endif
+
+#define pid_t int
+#define uid_t int
+#define gid_t int
+#define id_t int
+
+
+#define mode_t unsigned short
+#define HAVE_WCSCPY 1
+#define HAVE_WCSLEN 1
+#define HAVE__GET_TIMEZONE 1
+
+#define TEST 1
+
+
+
+/* Version number of package */
+#define VERSION "3.3.2"
+/* Define to the home page for this package. */
+#define PACKAGE_URL ""
+
+/* Define to the version of this package. */
+#define PACKAGE_VERSION "3.3.2"
+
+/* Name of package */
+#define PACKAGE "libarchive"
+
+/* Define to the address where bug reports for this package should be sent. */
+#define PACKAGE_BUGREPORT "libarchive-discuss@googlegroups.com"
+
+/* Define to the full name of this package. */
+#define PACKAGE_NAME "libarchive"
+
+/* Define to the full name and version of this package. */
+#define PACKAGE_STRING "libarchive 3.3.2"
+
+/* Define to the one symbol short name of this package. */
+#define PACKAGE_TARNAME "libarchive"
+
+/* Version number of libarchive as a single integer */
+#define LIBARCHIVE_VERSION_NUMBER "3003002"
+
+/* Version number of libarchive */
+#define LIBARCHIVE_VERSION_STRING "3.3.2"
+
+
+
+
+#include <io.h>
+#include <process.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <tchar.h>
+#include <windows.h>
+#include <Wincrypt.h>
+
+// </ Some Xenia Specific fixes>
+
 #ifndef ARCHIVE_PLATFORM_H_INCLUDED
-#define	ARCHIVE_PLATFORM_H_INCLUDED
+#define ARCHIVE_PLATFORM_H_INCLUDED
 
 /* archive.h and archive_entry.h require this. */
-#define	__LIBARCHIVE_BUILD 1
+#define __LIBARCHIVE_BUILD 1
 
 #if defined(PLATFORM_CONFIG_H)
 /* Use hand-built config.h in environments that need it. */
@@ -54,20 +126,21 @@
 
 /* On macOS check for some symbols based on the deployment target version.  */
 #if defined(__APPLE__)
-# undef HAVE_FUTIMENS
-# undef HAVE_UTIMENSAT
-# include <AvailabilityMacros.h>
-# if MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
-#  define HAVE_FUTIMENS 1
-#  define HAVE_UTIMENSAT 1
-# endif
+#undef HAVE_FUTIMENS
+#undef HAVE_UTIMENSAT
+#include <AvailabilityMacros.h>
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#define HAVE_FUTIMENS 1
+#define HAVE_UTIMENSAT 1
+#endif
 #endif
 
 /* It should be possible to get rid of this by extending the feature-test
  * macros to cover Windows API functions, probably along with non-trivial
  * refactoring of code to find structures that sit more cleanly on top of
  * either Windows or Posix APIs. */
-#if (defined(__WIN32__) || defined(_WIN32) || defined(__WIN32)) && !defined(__CYGWIN__)
+#if (defined(__WIN32__) || defined(_WIN32) || defined(__WIN32)) && \
+    !defined(__CYGWIN__)
 #include "archive_windows.h"
 #endif
 
@@ -84,10 +157,10 @@
 
 /* If not, define them so as to avoid dangling semicolons. */
 #ifndef __FBSDID
-#define	__FBSDID(a)     struct _undefined_hack
+#define __FBSDID(a) struct _undefined_hack
 #endif
 #ifndef __RCSID
-#define	__RCSID(a)     struct _undefined_hack
+#define __RCSID(a) struct _undefined_hack
 #endif
 
 /* Try to get standard C99-style integer type definitions. */
@@ -100,101 +173,105 @@
 
 /* Borland warns about its own constants!  */
 #if defined(__BORLANDC__)
-# if HAVE_DECL_UINT64_MAX
-#  undef	UINT64_MAX
-#  undef	HAVE_DECL_UINT64_MAX
-# endif
-# if HAVE_DECL_UINT64_MIN
-#  undef	UINT64_MIN
-#  undef	HAVE_DECL_UINT64_MIN
-# endif
-# if HAVE_DECL_INT64_MAX
-#  undef	INT64_MAX
-#  undef	HAVE_DECL_INT64_MAX
-# endif
-# if HAVE_DECL_INT64_MIN
-#  undef	INT64_MIN
-#  undef	HAVE_DECL_INT64_MIN
-# endif
+#if HAVE_DECL_UINT64_MAX
+#undef UINT64_MAX
+#undef HAVE_DECL_UINT64_MAX
+#endif
+#if HAVE_DECL_UINT64_MIN
+#undef UINT64_MIN
+#undef HAVE_DECL_UINT64_MIN
+#endif
+#if HAVE_DECL_INT64_MAX
+#undef INT64_MAX
+#undef HAVE_DECL_INT64_MAX
+#endif
+#if HAVE_DECL_INT64_MIN
+#undef INT64_MIN
+#undef HAVE_DECL_INT64_MIN
+#endif
 #endif
 
 /* Some platforms lack the standard *_MAX definitions. */
 #if !HAVE_DECL_SIZE_MAX
-#define	SIZE_MAX (~(size_t)0)
+#define SIZE_MAX (~(size_t)0)
 #endif
 #if !HAVE_DECL_SSIZE_MAX
-#define	SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
+#define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
 #endif
 #if !HAVE_DECL_UINT32_MAX
-#define	UINT32_MAX (~(uint32_t)0)
+#define UINT32_MAX (~(uint32_t)0)
 #endif
 #if !HAVE_DECL_INT32_MAX
-#define	INT32_MAX ((int32_t)(UINT32_MAX >> 1))
+#define INT32_MAX ((int32_t)(UINT32_MAX >> 1))
 #endif
 #if !HAVE_DECL_INT32_MIN
-#define	INT32_MIN ((int32_t)(~INT32_MAX))
+#define INT32_MIN ((int32_t)(~INT32_MAX))
 #endif
 #if !HAVE_DECL_UINT64_MAX
-#define	UINT64_MAX (~(uint64_t)0)
+#define UINT64_MAX (~(uint64_t)0)
 #endif
 #if !HAVE_DECL_INT64_MAX
-#define	INT64_MAX ((int64_t)(UINT64_MAX >> 1))
+#define INT64_MAX ((int64_t)(UINT64_MAX >> 1))
 #endif
 #if !HAVE_DECL_INT64_MIN
-#define	INT64_MIN ((int64_t)(~INT64_MAX))
+#define INT64_MIN ((int64_t)(~INT64_MAX))
 #endif
 #if !HAVE_DECL_UINTMAX_MAX
-#define	UINTMAX_MAX (~(uintmax_t)0)
+#define UINTMAX_MAX (~(uintmax_t)0)
 #endif
 #if !HAVE_DECL_INTMAX_MAX
-#define	INTMAX_MAX ((intmax_t)(UINTMAX_MAX >> 1))
+#define INTMAX_MAX ((intmax_t)(UINTMAX_MAX >> 1))
 #endif
 #if !HAVE_DECL_INTMAX_MIN
-#define	INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
+#define INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
 #endif
 
 /*
  * If we can't restore metadata using a file descriptor, then
  * for compatibility's sake, close files before trying to restore metadata.
  */
-#if defined(HAVE_FCHMOD) || defined(HAVE_FUTIMES) || defined(HAVE_ACL_SET_FD) || defined(HAVE_ACL_SET_FD_NP) || defined(HAVE_FCHOWN)
-#define	CAN_RESTORE_METADATA_FD
+#if defined(HAVE_FCHMOD) || defined(HAVE_FUTIMES) ||           \
+    defined(HAVE_ACL_SET_FD) || defined(HAVE_ACL_SET_FD_NP) || \
+    defined(HAVE_FCHOWN)
+#define CAN_RESTORE_METADATA_FD
 #endif
 
 /*
  * glibc 2.24 deprecates readdir_r
  */
-#if defined(HAVE_READDIR_R) && (!defined(__GLIBC__) || !defined(__GLIBC_MINOR__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 24))
-#define	USE_READDIR_R	1
+#if defined(HAVE_READDIR_R) &&                                            \
+    (!defined(__GLIBC__) || !defined(__GLIBC_MINOR__) || __GLIBC__ < 2 || \
+     (__GLIBC__ == 2 && __GLIBC_MINOR__ < 24))
+#define USE_READDIR_R 1
 #else
-#undef	USE_READDIR_R
+#undef USE_READDIR_R
 #endif
 
 /* Set up defaults for internal error codes. */
 #ifndef ARCHIVE_ERRNO_FILE_FORMAT
 #if HAVE_EFTYPE
-#define	ARCHIVE_ERRNO_FILE_FORMAT EFTYPE
+#define ARCHIVE_ERRNO_FILE_FORMAT EFTYPE
 #else
 #if HAVE_EILSEQ
-#define	ARCHIVE_ERRNO_FILE_FORMAT EILSEQ
+#define ARCHIVE_ERRNO_FILE_FORMAT EILSEQ
 #else
-#define	ARCHIVE_ERRNO_FILE_FORMAT EINVAL
+#define ARCHIVE_ERRNO_FILE_FORMAT EINVAL
 #endif
 #endif
 #endif
 
 #ifndef ARCHIVE_ERRNO_PROGRAMMER
-#define	ARCHIVE_ERRNO_PROGRAMMER EINVAL
+#define ARCHIVE_ERRNO_PROGRAMMER EINVAL
 #endif
 
 #ifndef ARCHIVE_ERRNO_MISC
-#define	ARCHIVE_ERRNO_MISC (-1)
+#define ARCHIVE_ERRNO_MISC (-1)
 #endif
 
 #if defined(__GNUC__) && (__GNUC__ >= 7)
-#define	__LA_FALLTHROUGH	__attribute__((fallthrough))
+#define __LA_FALLTHROUGH __attribute__((fallthrough))
 #else
-#define	__LA_FALLTHROUGH
+#define __LA_FALLTHROUGH
 #endif
 
 #endif /* !ARCHIVE_PLATFORM_H_INCLUDED */

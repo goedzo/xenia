@@ -13,8 +13,21 @@
 #include <memory>
 #include <string>
 
-namespace xe {
+// <This is all that required to include LibArchive in the project>
 
+#include <io.h>
+#include <codecvt>
+#include <locale>
+
+// Make sure the min and max macro's are not created
+#define NOMINMAX
+#include "third_party/libarchive/libarchive/archive.h"
+#include "third_party/libarchive/libarchive/archive_entry.h"
+
+// </LibArchive>
+
+
+namespace xe {
 class MappedMemory {
  public:
   enum class Mode {
@@ -25,6 +38,10 @@ class MappedMemory {
   static std::unique_ptr<MappedMemory> Open(const std::wstring& path, Mode mode,
                                             size_t offset = 0,
                                             size_t length = 0);
+
+  static std::unique_ptr<MappedMemory> OpenZip(const std::wstring& path,
+                                               Mode mode, size_t offset = 0,
+                                               size_t length = 0);
 
   MappedMemory(const std::wstring& path, Mode mode)
       : path_(path), mode_(mode), data_(nullptr), size_(0) {}
@@ -52,6 +69,11 @@ class MappedMemory {
   Mode mode_;
   void* data_;
   size_t size_;
+  // bool isArchived;
+  /*
+  archive* currentArchive;
+  archive_entry* currentArchiveEntry;
+  */
 };
 
 class ChunkedMappedMemoryWriter {

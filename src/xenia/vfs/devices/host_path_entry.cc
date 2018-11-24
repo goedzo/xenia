@@ -100,7 +100,7 @@ bool HostPathEntry::DeleteEntryInternal(Entry* entry) {
     return xe::filesystem::DeleteFolder(full_path);
   } else {
     // Delete file.
-    return xe::filesystem::DeleteFile(full_path);
+    return xe::filesystem::DeleteFileXenia(full_path);
   }
 }
 

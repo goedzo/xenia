@@ -33,6 +33,7 @@ __FBSDID("$FreeBSD: head/lib/libarchive/archive_entry.c 201096 2009-12-28 02:41:
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+/*
 #if MAJOR_IN_MKDEV
 #include <sys/mkdev.h>
 #define HAVE_MAJOR
@@ -40,6 +41,8 @@ __FBSDID("$FreeBSD: head/lib/libarchive/archive_entry.c 201096 2009-12-28 02:41:
 #include <sys/sysmacros.h>
 #define HAVE_MAJOR
 #endif
+*/
+
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif

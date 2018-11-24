@@ -377,7 +377,7 @@ void Emulator::Resume() {
 bool Emulator::SaveToFile(const std::wstring& path) {
   Pause();
 
-  filesystem::CreateFile(path);
+  filesystem::CreateFileXenia(path);
   auto map = MappedMemory::Open(path, MappedMemory::Mode::kReadWrite, 0,
                                 1024ull * 1024ull * 1024ull * 2ull);
   if (!map) {

@@ -25,7 +25,16 @@ DiscImageDevice::DiscImageDevice(const std::string& mount_path,
 DiscImageDevice::~DiscImageDevice() = default;
 
 bool DiscImageDevice::Initialize() {
-  mmap_ = MappedMemory::Open(local_path_, MappedMemory::Mode::kRead);
+  auto last_dot = local_path_.find_last_of('.');
+  auto extension = local_path_.substr(last_dot);
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 tolower);
+  if (extension == L".zip") {
+    mmap_ = MappedMemory::OpenZip(local_path_, MappedMemory::Mode::kRead);
+  } else {
+    mmap_ = MappedMemory::Open(local_path_, MappedMemory::Mode::kRead);
+  }
+
   if (!mmap_) {
     XELOGE("Disc image could not be mapped");
     return false;

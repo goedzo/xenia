@@ -48,8 +48,7 @@ bool IsFolder(const std::wstring& path) {
          (attrib & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
 }
 
-#undef CreateFile
-bool CreateFile(const std::wstring& path) {
+bool CreateFileXenia(const std::wstring& path) {
   auto handle = CreateFileW(path.c_str(), 0, 0, nullptr, CREATE_ALWAYS,
                             FILE_ATTRIBUTE_NORMAL, nullptr);
   if (handle == INVALID_HANDLE_VALUE) {
@@ -65,7 +64,7 @@ FILE* OpenFile(const std::wstring& path, const char* mode) {
   return _wfopen(fixed_path.c_str(), xe::to_wstring(mode).c_str());
 }
 
-bool DeleteFile(const std::wstring& path) {
+bool DeleteFileXenia(const std::wstring& path) {
   return DeleteFileW(path.c_str()) ? true : false;
 }
 

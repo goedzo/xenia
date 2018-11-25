@@ -286,7 +286,8 @@ dword_result_t RtlMultiByteToUnicodeN(lpword_t destination_ptr,
 
   return 0;
 }
-DECLARE_XBOXKRNL_EXPORT2(RtlMultiByteToUnicodeN, kNone, kImplemented, kSketchy);
+DECLARE_XBOXKRNL_EXPORT3(RtlMultiByteToUnicodeN, kNone, kImplemented,
+                         kHighFrequency, kSketchy);
 
 // https://msdn.microsoft.com/en-us/library/ff553261
 dword_result_t RtlUnicodeToMultiByteN(pointer_t<uint8_t> destination_ptr,
@@ -308,7 +309,8 @@ dword_result_t RtlUnicodeToMultiByteN(pointer_t<uint8_t> destination_ptr,
 
   return 0;
 }
-DECLARE_XBOXKRNL_EXPORT2(RtlUnicodeToMultiByteN, kNone, kImplemented, kSketchy);
+DECLARE_XBOXKRNL_EXPORT3(RtlUnicodeToMultiByteN, kNone, kImplemented,
+                         kHighFrequency, kSketchy);
 
 pointer_result_t RtlImageXexHeaderField(pointer_t<xex2_header> xex_header,
                                         dword_t field_dword) {
@@ -416,8 +418,8 @@ void RtlEnterCriticalSection(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
 
   if (xe::atomic_inc(&cs->lock_count) != 0) {
     // Create a full waiter.
-    KeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0,
-                          nullptr);
+    xeKeWaitForSingleObject(reinterpret_cast<void*>(cs.host_address()), 8, 0, 0,
+                            nullptr);
   }
 
   assert_true(cs->owning_thread == 0);
@@ -465,7 +467,7 @@ void RtlLeaveCriticalSection(pointer_t<X_RTL_CRITICAL_SECTION> cs) {
   cs->owning_thread = 0;
   if (xe::atomic_dec(&cs->lock_count) != -1) {
     // There were waiters - wake one of them.
-    KeSetEvent(reinterpret_cast<X_KEVENT*>(cs.host_address()), 1, 0);
+    xeKeSetEvent(reinterpret_cast<X_KEVENT*>(cs.host_address()), 1, 0);
   }
 }
 DECLARE_XBOXKRNL_EXPORT2(RtlLeaveCriticalSection, kNone, kImplemented,

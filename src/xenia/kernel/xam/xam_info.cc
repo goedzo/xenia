@@ -28,6 +28,9 @@ namespace xam {
 constexpr uint32_t X_LANGUAGE_ENGLISH = 1;
 constexpr uint32_t X_LANGUAGE_JAPANESE = 2;
 
+dword_result_t XamFeatureEnabled(dword_t unk) { return 0; }
+DECLARE_XAM_EXPORT1(XamFeatureEnabled, kNone, kStub);
+
 // Empty stub schema binary.
 uint8_t schema_bin[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -416,6 +419,12 @@ dword_result_t XamGetPrivateEnumStructureFromHandle(unknown_t unk1,
   return X_ERROR_INVALID_PARAMETER;
 }
 DECLARE_XAM_EXPORT1(XamGetPrivateEnumStructureFromHandle, kNone, kStub);
+
+dword_result_t XamQueryLiveHiveW(lpwstring_t name, lpvoid_t out_buf,
+                                 dword_t out_size, dword_t type /* guess */) {
+  return X_STATUS_INVALID_PARAMETER_1;
+}
+DECLARE_XAM_EXPORT1(XamQueryLiveHiveW, kNone, kStub);
 
 void RegisterInfoExports(xe::cpu::ExportResolver* export_resolver,
                          KernelState* kernel_state) {}

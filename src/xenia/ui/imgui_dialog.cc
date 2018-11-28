@@ -28,11 +28,14 @@ ImGuiDialog::~ImGuiDialog() {
   for (auto fence : waiting_fences_) {
     fence->Signal();
   }
+  wait_fence_.Signal();
 }
 
 void ImGuiDialog::Then(xe::threading::Fence* fence) {
   waiting_fences_.push_back(fence);
 }
+
+void ImGuiDialog::WaitFence() { wait_fence_.Wait(); }
 
 void ImGuiDialog::Close() { has_close_pending_ = true; }
 

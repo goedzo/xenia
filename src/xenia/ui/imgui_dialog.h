@@ -32,6 +32,8 @@ class ImGuiDialog : private WindowListener {
   // A fence to signal when the dialog is closed.
   void Then(xe::threading::Fence* fence);
 
+  void WaitFence();
+
  protected:
   ImGuiDialog(Window* window);
 
@@ -52,6 +54,7 @@ class ImGuiDialog : private WindowListener {
   bool had_imgui_active_ = false;
   bool has_close_pending_ = false;
   std::vector<xe::threading::Fence*> waiting_fences_;
+  xe::threading::Fence wait_fence_;
 };
 
 }  // namespace ui

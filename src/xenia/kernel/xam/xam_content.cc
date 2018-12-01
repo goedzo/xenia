@@ -151,10 +151,10 @@ dword_result_t XamContentCreateEnumerator(dword_t user_index, dword_t device_id,
     *buffer_size_ptr = (uint32_t)XCONTENT_DATA::kSize * items_per_enumerate;
   }
 
-/*
-auto e = new XStaticEnumerator(kernel_state(), items_per_enumerate,
-                                 XCONTENT_DATA::kSize);
-*/
+  /*
+  auto e = new XStaticEnumerator(kernel_state(), items_per_enumerate,
+                                   XCONTENT_DATA::kSize);
+  */
 
   // Some games seem to pass 1 as max_count, but still run an XamEnumerate loop
   // Maybe max_count only refers to the number of results for XamEnumerate to

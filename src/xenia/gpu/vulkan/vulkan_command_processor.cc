@@ -1059,7 +1059,6 @@ bool VulkanCommandProcessor::IssueCopy() {
   }
   auto command_buffer = current_command_buffer_;
 
-  
   if (texture->image_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
     // Transition the image to a general layout.
     VkImageMemoryBarrier image_barrier;

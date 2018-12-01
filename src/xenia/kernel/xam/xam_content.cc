@@ -151,8 +151,26 @@ dword_result_t XamContentCreateEnumerator(dword_t user_index, dword_t device_id,
     *buffer_size_ptr = (uint32_t)XCONTENT_DATA::kSize * items_per_enumerate;
   }
 
-  auto e = new XStaticEnumerator(kernel_state(), items_per_enumerate,
+/*
+auto e = new XStaticEnumerator(kernel_state(), items_per_enumerate,
                                  XCONTENT_DATA::kSize);
+*/
+
+  // Some games seem to pass 1 as max_count, but still run an XamEnumerate loop
+  // Maybe max_count only refers to the number of results for XamEnumerate to
+  // return at a time, but the actual enumeration itself still contains all
+  // the results it can find?
+
+  // For now editing the enumerators max count to 16 seems to fix some games
+  // eg. Sonic Unleashed, which passes 1 as max_count but on 360 somehow finds
+  // every DLC installed... will have to debug on actual 360 soon.
+  uint32_t count = items_per_enumerate;
+  if (items_per_enumerate < 16) {
+    count = 16;
+  }
+
+  auto e = new XStaticEnumerator(kernel_state(), count, XCONTENT_DATA::kSize);
+
   e->Initialize();
 
   // Get all content data.

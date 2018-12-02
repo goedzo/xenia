@@ -187,12 +187,12 @@ bool EmulatorWindow::Initialize() {
   auto emu_menu = MenuItem::Create(MenuItem::Type::kPopup, L"&Emulator");
   {
     emu_menu->AddChild(MenuItem::Create(MenuItem::Type::kString, L"&Pause",
-        L"Ctrl+P",
-        [&]() { emulator()->Pause(); }));
+                                        L"Ctrl+P",
+                                        [&]() { emulator()->Pause(); }));
 
     emu_menu->AddChild(MenuItem::Create(MenuItem::Type::kString, L"&Resume",
-        L"Ctrl+R",
-        [&]() { emulator()->Resume(); }));
+                                        L"Ctrl+R",
+                                        [&]() { emulator()->Resume(); }));
   }
   main_menu->AddChild(std::move(emu_menu));
 

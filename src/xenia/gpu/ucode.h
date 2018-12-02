@@ -1372,174 +1372,169 @@ constexpr bool DoesAluVectorOpcodeHaveSideEffects(AluVectorOpcode opcode) {
 // anywhere.
 inline bool AluVectorOpcodeHasSideEffects(AluVectorOpcode vector_opcode) {
   switch (vector_opcode) {
-    // Returns true if the given ALU vector opcode must be executed even if it
-    // doesn't write.
-        case AluVectorOpcode::kSetpEqPush:
-        case AluVectorOpcode::kSetpNePush:
-        case AluVectorOpcode::kSetpGtPush:
-        case AluVectorOpcode::kSetpGePush:
-        case AluVectorOpcode::kKillEq:
-        case AluVectorOpcode::kKillGt:
-        case AluVectorOpcode::kKillGe:
-        case AluVectorOpcode::kKillNe:
-        case AluVectorOpcode::kMaxA:
-          return true;
-        default:
-          break;
-      }
-      return false;
+      // Returns true if the given ALU vector opcode must be executed even if it
+      // doesn't write.
+    case AluVectorOpcode::kSetpEqPush:
+    case AluVectorOpcode::kSetpNePush:
+    case AluVectorOpcode::kSetpGtPush:
+    case AluVectorOpcode::kSetpGePush:
+    case AluVectorOpcode::kKillEq:
+    case AluVectorOpcode::kKillGt:
+    case AluVectorOpcode::kKillGe:
+    case AluVectorOpcode::kKillNe:
+    case AluVectorOpcode::kMaxA:
+      return true;
+    default:
+      break;
+  }
+  return false;
+}
+
+struct AluInstruction {
+  // Whether data is being exported (or written to local registers).
+  bool is_export() const { return data_.export_data == 1; }
+  bool export_write_mask() const { return data_.scalar_dest_rel == 1; }
+
+  // Whether the instruction must be executed even if doesn't write.
+  bool has_vector_side_effects() const {
+    return DoesAluVectorOpcodeHaveSideEffects(vector_opcode());
+  }
+  bool has_scalar_side_effects() const {
+    return DoesAluScalarOpcodeHaveSideEffects(scalar_opcode());
+  }
+
+  // Whether the jump is predicated (or conditional).
+  bool is_predicated() const { return data_.is_predicated; }
+  // Required condition value of the comparision (true or false).
+  bool predicate_condition() const { return data_.pred_condition == 1; }
+
+  bool abs_constants() const { return data_.abs_constants == 1; }
+  bool is_const_0_addressed() const { return data_.const_0_rel_abs == 1; }
+  bool is_const_1_addressed() const { return data_.const_1_rel_abs == 1; }
+  bool is_address_relative() const { return data_.address_absolute == 1; }
+
+  bool has_vector_op() const {
+    return vector_write_mask() || is_export() || has_vector_side_effects() ||
+           AluVectorOpcodeHasSideEffects(vector_opcode());
+  }
+  AluVectorOpcode vector_opcode() const {
+    return static_cast<AluVectorOpcode>(data_.vector_opc);
+  }
+  uint32_t vector_write_mask() const { return data_.vector_write_mask; }
+  uint32_t vector_dest() const { return data_.vector_dest; }
+  bool is_vector_dest_relative() const { return data_.vector_dest_rel == 1; }
+  bool vector_clamp() const { return data_.vector_clamp == 1; }
+
+  bool has_scalar_op() const {
+    return scalar_opcode() != AluScalarOpcode::kRetainPrev ||
+           (!is_export() && scalar_write_mask() != 0) ||
+           has_scalar_side_effects();
+  }
+  AluScalarOpcode scalar_opcode() const {
+    return static_cast<AluScalarOpcode>(data_.scalar_opc);
+  }
+  uint32_t scalar_write_mask() const { return data_.scalar_write_mask; }
+  uint32_t scalar_dest() const { return data_.scalar_dest; }
+  bool is_scalar_dest_relative() const { return data_.scalar_dest_rel == 1; }
+  bool scalar_clamp() const { return data_.scalar_clamp == 1; }
+
+  uint32_t src_reg(size_t i) const {
+    switch (i) {
+      case 1:
+        return data_.src1_reg;
+      case 2:
+        return data_.src2_reg;
+      case 3:
+        return data_.src3_reg;
+      default:
+        assert_unhandled_case(i);
+        return 0;
     }
+  }
+  bool src_is_temp(size_t i) const {
+    switch (i) {
+      case 1:
+        return data_.src1_sel == 1;
+      case 2:
+        return data_.src2_sel == 1;
+      case 3:
+        return data_.src3_sel == 1;
+      default:
+        assert_unhandled_case(i);
+        return 0;
+    }
+  }
+  uint32_t src_swizzle(size_t i) const {
+    switch (i) {
+      case 1:
+        return data_.src1_swiz;
+      case 2:
+        return data_.src2_swiz;
+      case 3:
+        return data_.src3_swiz;
+      default:
+        assert_unhandled_case(i);
+        return 0;
+    }
+  }
+  bool src_negate(size_t i) const {
+    switch (i) {
+      case 1:
+        return data_.src1_reg_negate == 1;
+      case 2:
+        return data_.src2_reg_negate == 1;
+      case 3:
+        return data_.src3_reg_negate == 1;
+      default:
+        assert_unhandled_case(i);
+        return 0;
+    }
+  }
 
-    struct AluInstruction {
-      // Whether data is being exported (or written to local registers).
-      bool is_export() const { return data_.export_data == 1; }
-      bool export_write_mask() const { return data_.scalar_dest_rel == 1; }
+ private:
+  XEPACKEDSTRUCT(Data, {
+    XEPACKEDSTRUCTANONYMOUS({
+      uint32_t vector_dest : 6;
+      uint32_t vector_dest_rel : 1;
+      uint32_t abs_constants : 1;
+      uint32_t scalar_dest : 6;
+      uint32_t scalar_dest_rel : 1;
+      uint32_t export_data : 1;
+      uint32_t vector_write_mask : 4;
+      uint32_t scalar_write_mask : 4;
+      uint32_t vector_clamp : 1;
+      uint32_t scalar_clamp : 1;
+      uint32_t scalar_opc : 6;  // instr_scalar_opc_t
+    });
+    XEPACKEDSTRUCTANONYMOUS({
+      uint32_t src3_swiz : 8;
+      uint32_t src2_swiz : 8;
+      uint32_t src1_swiz : 8;
+      uint32_t src3_reg_negate : 1;
+      uint32_t src2_reg_negate : 1;
+      uint32_t src1_reg_negate : 1;
+      uint32_t pred_condition : 1;
+      uint32_t is_predicated : 1;
+      uint32_t address_absolute : 1;
+      uint32_t const_1_rel_abs : 1;
+      uint32_t const_0_rel_abs : 1;
+    });
+    XEPACKEDSTRUCTANONYMOUS({
+      uint32_t src3_reg : 8;
+      uint32_t src2_reg : 8;
+      uint32_t src1_reg : 8;
+      uint32_t vector_opc : 5;  // instr_vector_opc_t
+      uint32_t src3_sel : 1;
+      uint32_t src2_sel : 1;
+      uint32_t src1_sel : 1;
+    });
+  });
+  Data data_;
+};
+static_assert_size(AluInstruction, 12);
 
-      // Whether the instruction must be executed even if doesn't write.
-      bool has_vector_side_effects() const {
-        return DoesAluVectorOpcodeHaveSideEffects(vector_opcode());
-      }
-      bool has_scalar_side_effects() const {
-        return DoesAluScalarOpcodeHaveSideEffects(scalar_opcode());
-      }
-
-      // Whether the jump is predicated (or conditional).
-      bool is_predicated() const { return data_.is_predicated; }
-      // Required condition value of the comparision (true or false).
-      bool predicate_condition() const { return data_.pred_condition == 1; }
-
-      bool abs_constants() const { return data_.abs_constants == 1; }
-      bool is_const_0_addressed() const { return data_.const_0_rel_abs == 1; }
-      bool is_const_1_addressed() const { return data_.const_1_rel_abs == 1; }
-      bool is_address_relative() const { return data_.address_absolute == 1; }
-
-      bool has_vector_op() const {
-        return vector_write_mask() || is_export() ||
-               has_vector_side_effects() ||
-               AluVectorOpcodeHasSideEffects(vector_opcode());
-      }
-      AluVectorOpcode vector_opcode() const {
-        return static_cast<AluVectorOpcode>(data_.vector_opc);
-      }
-      uint32_t vector_write_mask() const { return data_.vector_write_mask; }
-      uint32_t vector_dest() const { return data_.vector_dest; }
-      bool is_vector_dest_relative() const {
-        return data_.vector_dest_rel == 1;
-      }
-      bool vector_clamp() const { return data_.vector_clamp == 1; }
-
-      bool has_scalar_op() const {
-        return scalar_opcode() != AluScalarOpcode::kRetainPrev ||
-               (!is_export() && scalar_write_mask() != 0) ||
-               has_scalar_side_effects();
-      }
-      AluScalarOpcode scalar_opcode() const {
-        return static_cast<AluScalarOpcode>(data_.scalar_opc);
-      }
-      uint32_t scalar_write_mask() const { return data_.scalar_write_mask; }
-      uint32_t scalar_dest() const { return data_.scalar_dest; }
-      bool is_scalar_dest_relative() const {
-        return data_.scalar_dest_rel == 1;
-      }
-      bool scalar_clamp() const { return data_.scalar_clamp == 1; }
-
-      uint32_t src_reg(size_t i) const {
-        switch (i) {
-          case 1:
-            return data_.src1_reg;
-          case 2:
-            return data_.src2_reg;
-          case 3:
-            return data_.src3_reg;
-          default:
-            assert_unhandled_case(i);
-            return 0;
-        }
-      }
-      bool src_is_temp(size_t i) const {
-        switch (i) {
-          case 1:
-            return data_.src1_sel == 1;
-          case 2:
-            return data_.src2_sel == 1;
-          case 3:
-            return data_.src3_sel == 1;
-          default:
-            assert_unhandled_case(i);
-            return 0;
-        }
-      }
-      uint32_t src_swizzle(size_t i) const {
-        switch (i) {
-          case 1:
-            return data_.src1_swiz;
-          case 2:
-            return data_.src2_swiz;
-          case 3:
-            return data_.src3_swiz;
-          default:
-            assert_unhandled_case(i);
-            return 0;
-        }
-      }
-      bool src_negate(size_t i) const {
-        switch (i) {
-          case 1:
-            return data_.src1_reg_negate == 1;
-          case 2:
-            return data_.src2_reg_negate == 1;
-          case 3:
-            return data_.src3_reg_negate == 1;
-          default:
-            assert_unhandled_case(i);
-            return 0;
-        }
-      }
-
-     private:
-      XEPACKEDSTRUCT(Data, {
-        XEPACKEDSTRUCTANONYMOUS({
-          uint32_t vector_dest : 6;
-          uint32_t vector_dest_rel : 1;
-          uint32_t abs_constants : 1;
-          uint32_t scalar_dest : 6;
-          uint32_t scalar_dest_rel : 1;
-          uint32_t export_data : 1;
-          uint32_t vector_write_mask : 4;
-          uint32_t scalar_write_mask : 4;
-          uint32_t vector_clamp : 1;
-          uint32_t scalar_clamp : 1;
-          uint32_t scalar_opc : 6;  // instr_scalar_opc_t
-        });
-        XEPACKEDSTRUCTANONYMOUS({
-          uint32_t src3_swiz : 8;
-          uint32_t src2_swiz : 8;
-          uint32_t src1_swiz : 8;
-          uint32_t src3_reg_negate : 1;
-          uint32_t src2_reg_negate : 1;
-          uint32_t src1_reg_negate : 1;
-          uint32_t pred_condition : 1;
-          uint32_t is_predicated : 1;
-          uint32_t address_absolute : 1;
-          uint32_t const_1_rel_abs : 1;
-          uint32_t const_0_rel_abs : 1;
-        });
-        XEPACKEDSTRUCTANONYMOUS({
-          uint32_t src3_reg : 8;
-          uint32_t src2_reg : 8;
-          uint32_t src1_reg : 8;
-          uint32_t vector_opc : 5;  // instr_vector_opc_t
-          uint32_t src3_sel : 1;
-          uint32_t src2_sel : 1;
-          uint32_t src1_sel : 1;
-        });
-      });
-      Data data_;
-    };
-    static_assert_size(AluInstruction, 12);
-
-  }  // namespace ucode
-}  // namespace gpu
 }  // namespace ucode
+}  // namespace gpu
+}  // namespace xe
 
 #endif  // XENIA_GPU_UCODE_H_

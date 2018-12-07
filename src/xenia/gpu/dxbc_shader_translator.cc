@@ -33,7 +33,9 @@ DEFINE_bool(dxbc_switch, true,
             "on may improve stability, though this heavily depends on the "
             "driver - on AMD, it's recommended to have this set to true, as "
             "Halo 3 appears to crash when if is used for flow control "
-            "(possibly the shader compiler tries to flatten them).");
+            "(possibly the shader compiler tries to flatten them). On Intel "
+            "HD Graphics, this is ignored because of a crash with the switch "
+            "instruction.");
 DEFINE_bool(dxbc_source_map, false,
             "Disassemble Xenos instructions as comments in the resulting DXBC "
             "for debugging.");
@@ -85,8 +87,9 @@ constexpr uint32_t
 constexpr uint32_t DxbcShaderTranslator::kCbufferIndexUnallocated;
 constexpr uint32_t DxbcShaderTranslator::kCfExecBoolConstantNone;
 
-DxbcShaderTranslator::DxbcShaderTranslator(bool edram_rov_used)
-    : edram_rov_used_(edram_rov_used) {
+DxbcShaderTranslator::DxbcShaderTranslator(uint32_t vendor_id,
+                                           bool edram_rov_used)
+    : vendor_id_(vendor_id), edram_rov_used_(edram_rov_used) {
   // Don't allocate again and again for the first shader.
   shader_code_.reserve(8192);
   shader_object_.reserve(16384);
@@ -517,6 +520,11 @@ void DxbcShaderTranslator::Reset() {
   sampler_bindings_.clear();
 
   std::memset(&stat_, 0, sizeof(stat_));
+}
+
+bool DxbcShaderTranslator::UseSwitchForControlFlow() const {
+  // Xenia crashes on Intel HD Graphics 4000 with switch.
+  return FLAGS_dxbc_switch && vendor_id_ != 0x8086;
 }
 
 uint32_t DxbcShaderTranslator::PushSystemTemp(bool zero) {
@@ -1029,8 +1037,8 @@ void DxbcShaderTranslator::StartPixelShader() {
     ++stat_.instruction_count;
     ++stat_.float_instruction_count;
   }
-  // Floor VPOS so with AA, the resulting pixel corner/center is written, not
-  // the sample position (games likely don't expect it to be fractional).
+  // Floor VPOS so with SSAA, the resulting pixel corner/center is written, not
+  // the sample position.
   shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ROUND_NI) |
                          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
   shader_code_.push_back(
@@ -1063,6 +1071,44 @@ void DxbcShaderTranslator::StartPixelShader() {
   shader_code_.push_back(kSysConst_PixelHalfPixelOffset_Vec);
   ++stat_.instruction_count;
   ++stat_.float_instruction_count;
+  // Undo 2x resolution scale in VPOS.
+  if (edram_rov_used_) {
+    // Get inverse of the width/height scale.
+    system_constants_used_ |= 1ull << kSysConst_EDRAMResolutionScaleLog2_Index;
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_IMAD) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(11));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0100, 1));
+    shader_code_.push_back(param_gen_value_temp);
+    shader_code_.push_back(
+        EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+                                  kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+    shader_code_.push_back(cbuffer_index_system_constants_);
+    shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+    shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+    shader_code_.push_back(
+        EncodeScalarOperand(D3D10_SB_OPERAND_TYPE_IMMEDIATE32, 0));
+    shader_code_.push_back(uint32_t(-(1 << 23)));
+    shader_code_.push_back(
+        EncodeScalarOperand(D3D10_SB_OPERAND_TYPE_IMMEDIATE32, 0));
+    shader_code_.push_back(0x3F800000);
+    ++stat_.instruction_count;
+    ++stat_.int_instruction_count;
+    // Convert to guest pixels.
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_MUL) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0011, 1));
+    shader_code_.push_back(param_gen_value_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_INPUT, kSwizzleXYZW, 1));
+    shader_code_.push_back(uint32_t(InOutRegister::kPSInPosition));
+    shader_code_.push_back(
+        EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 2, 1));
+    shader_code_.push_back(param_gen_value_temp);
+    ++stat_.instruction_count;
+    ++stat_.float_instruction_count;
+  }
   // Write point sprite coordinates to ZW.
   shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_MOV) |
                          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
@@ -1208,7 +1254,7 @@ void DxbcShaderTranslator::StartTranslation() {
   ++stat_.instruction_count;
   ++stat_.dynamic_flow_control_count;
   // Switch and the first label (pc == 0).
-  if (FLAGS_dxbc_switch) {
+  if (UseSwitchForControlFlow()) {
     shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_SWITCH) |
                            ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(3));
     shader_code_.push_back(
@@ -2422,6 +2468,97 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV_DepthStencil(
   shader_code_.push_back(81);
   ++stat_.instruction_count;
   ++stat_.int_instruction_count;
+
+  // Apply pixel width and height scale.
+  system_constants_used_ |= 1ull << kSysConst_EDRAMResolutionScaleLog2_Index;
+  for (uint32_t i = 0; i < 2; ++i) {
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ISHL) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
+    shader_code_.push_back(edram_dword_offset_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+    shader_code_.push_back(edram_dword_offset_temp);
+    shader_code_.push_back(EncodeVectorReplicatedOperand(
+        D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+        kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+    shader_code_.push_back(cbuffer_index_system_constants_);
+    shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+    shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+    ++stat_.instruction_count;
+    ++stat_.int_instruction_count;
+  }
+
+  // Choose the pixel for 2x scaling.
+  uint32_t resolution_scale_pixel_temp = PushSystemTemp();
+
+  // 1) Convert pixel position to integer.
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_FTOU) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0011, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  shader_code_.push_back(EncodeVectorSwizzledOperand(
+      D3D10_SB_OPERAND_TYPE_INPUT, kSwizzleXYZW, 1));
+  shader_code_.push_back(uint32_t(InOutRegister::kPSInPosition));
+  ++stat_.instruction_count;
+  ++stat_.conversion_instruction_count;
+
+  // 2) For 2x, get the current pixel in the quad. For 1x, write 0 for it.
+  system_constants_used_ |= 1ull << kSysConst_EDRAMResolutionScaleLog2_Index;
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_AND) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0011, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  shader_code_.push_back(
+      EncodeVectorSwizzledOperand(D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  shader_code_.push_back(EncodeVectorReplicatedOperand(
+      D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+      kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+  shader_code_.push_back(cbuffer_index_system_constants_);
+  shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+  shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+  ++stat_.instruction_count;
+  ++stat_.uint_instruction_count;
+
+  // 3) Calculate dword offset of the pixel in the quad.
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_UMAD) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0001, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  shader_code_.push_back(
+      EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 1, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  shader_code_.push_back(
+      EncodeScalarOperand(D3D10_SB_OPERAND_TYPE_IMMEDIATE32, 0));
+  shader_code_.push_back(2);
+  shader_code_.push_back(
+      EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  ++stat_.instruction_count;
+  ++stat_.uint_instruction_count;
+
+  // 4) Add the quad pixel offset.
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_IADD) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
+  shader_code_.push_back(edram_dword_offset_temp);
+  shader_code_.push_back(
+      EncodeVectorSwizzledOperand(D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+  shader_code_.push_back(edram_dword_offset_temp);
+  shader_code_.push_back(
+      EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
+  shader_code_.push_back(resolution_scale_pixel_temp);
+  ++stat_.instruction_count;
+  ++stat_.int_instruction_count;
+
+  // Release resolution_scale_pixel_temp.
+  PopSystemTemp();
 
   // Load the previous depth/stencil values.
   uint32_t depth_values_temp = PushSystemTemp();
@@ -5124,6 +5261,26 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
   ++stat_.instruction_count;
   ++stat_.conversion_instruction_count;
 
+  // Get guest pixel position as if increased resolution is disabled - addresses
+  // within the quad with 2x resolution will be calculated later.
+  system_constants_used_ |= 1ull << kSysConst_EDRAMResolutionScaleLog2_Index;
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_USHR) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0011, 1));
+  shader_code_.push_back(edram_coord_pixel_temp);
+  shader_code_.push_back(
+      EncodeVectorSwizzledOperand(D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+  shader_code_.push_back(edram_coord_pixel_temp);
+  shader_code_.push_back(EncodeVectorReplicatedOperand(
+      D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+      kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+  shader_code_.push_back(cbuffer_index_system_constants_);
+  shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+  shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+  ++stat_.instruction_count;
+  ++stat_.uint_instruction_count;
+
   // Convert the position from pixels to samples.
   system_constants_used_ |= 1ull << kSysConst_SampleCountLog2_Index;
   shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ISHL) |
@@ -5582,6 +5739,112 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
     // Release rt_write_masks_temp.
     PopSystemTemp();
 
+    // Apply pixel width and height scale.
+    system_constants_used_ |= 1ull << kSysConst_EDRAMResolutionScaleLog2_Index;
+    for (uint32_t i = 0; i < 2; ++i) {
+      shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ISHL) |
+                             ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+      shader_code_.push_back(
+          EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
+      shader_code_.push_back(edram_coord_pixel_temp);
+      shader_code_.push_back(EncodeVectorSwizzledOperand(
+          D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+      shader_code_.push_back(edram_coord_pixel_temp);
+      shader_code_.push_back(EncodeVectorReplicatedOperand(
+          D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+          kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+      shader_code_.push_back(cbuffer_index_system_constants_);
+      shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+      shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+      ++stat_.instruction_count;
+      ++stat_.int_instruction_count;
+    }
+
+    // Choose the pixel for 2x scaling.
+    uint32_t resolution_scale_pixel_temp = PushSystemTemp();
+
+    // 1) Convert pixel position to integer.
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_FTOU) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0011, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_INPUT, kSwizzleXYZW, 1));
+    shader_code_.push_back(uint32_t(InOutRegister::kPSInPosition));
+    ++stat_.instruction_count;
+    ++stat_.conversion_instruction_count;
+
+    // 2) For 2x, get the current pixel in the quad. For 1x, write 0 for it.
+    system_constants_used_ |= 1ull << kSysConst_EDRAMResolutionScaleLog2_Index;
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_AND) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0011, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(EncodeVectorReplicatedOperand(
+        D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+        kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+    shader_code_.push_back(cbuffer_index_system_constants_);
+    shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+    shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+    ++stat_.instruction_count;
+    ++stat_.uint_instruction_count;
+
+    // 3) Calculate dword offset of the pixel in the quad.
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_UMAD) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0001, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(
+        EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 1, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(
+        EncodeScalarOperand(D3D10_SB_OPERAND_TYPE_IMMEDIATE32, 0));
+    shader_code_.push_back(2);
+    shader_code_.push_back(
+        EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    ++stat_.instruction_count;
+    ++stat_.uint_instruction_count;
+
+    // 4) Multiply the quad pixel offset by dword count per pixel for each RT.
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ISHL) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(
+        EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+    shader_code_.push_back(rt_64bpp_temp);
+    ++stat_.instruction_count;
+    ++stat_.int_instruction_count;
+
+    // 5) Add the quad pixel offsets.
+    shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_IADD) |
+                           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+    shader_code_.push_back(
+        EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
+    shader_code_.push_back(edram_coord_pixel_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+    shader_code_.push_back(edram_coord_pixel_temp);
+    shader_code_.push_back(EncodeVectorSwizzledOperand(
+        D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+    shader_code_.push_back(resolution_scale_pixel_temp);
+    ++stat_.instruction_count;
+    ++stat_.int_instruction_count;
+
+    // Release resolution_scale_pixel_temp.
+    PopSystemTemp();
+
     // Get what render targets need gamma conversion.
     uint32_t rt_gamma_temp = PushSystemTemp();
     system_constants_used_ |= 1ull << kSysConst_Flags_Index;
@@ -5749,27 +6012,54 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
       ++stat_.instruction_count;
       ++stat_.uint_instruction_count;
 
-      // Get per-sample EDRAM addresses offsets. First, multiply the relative
-      // sample offset by sample size.
+      // Get per-sample EDRAM addresses offsets.
       uint32_t edram_coord_sample_temp = PushSystemTemp();
-      shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ISHL) |
-                             ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(10));
+
+      // 1) Choose the strides according to the resolution scale (1x or 2x2x).
+      system_constants_used_ |= 1ull
+                                << kSysConst_EDRAMResolutionScaleLog2_Index;
+      shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_MOVC) |
+                             ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(17));
       shader_code_.push_back(
           EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
       shader_code_.push_back(edram_coord_sample_temp);
+      shader_code_.push_back(EncodeVectorReplicatedOperand(
+          D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+          kSysConst_EDRAMResolutionScaleLog2_Comp, 3));
+      shader_code_.push_back(cbuffer_index_system_constants_);
+      shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+      shader_code_.push_back(kSysConst_EDRAMResolutionScaleLog2_Vec);
+      shader_code_.push_back(EncodeVectorSwizzledOperand(
+          D3D10_SB_OPERAND_TYPE_IMMEDIATE32, kSwizzleXYZW, 0));
+      shader_code_.push_back(0);
+      shader_code_.push_back(320);
+      shader_code_.push_back(4);
+      shader_code_.push_back(324);
       shader_code_.push_back(EncodeVectorSwizzledOperand(
           D3D10_SB_OPERAND_TYPE_IMMEDIATE32, kSwizzleXYZW, 0));
       shader_code_.push_back(0);
       shader_code_.push_back(80);
       shader_code_.push_back(1);
       shader_code_.push_back(81);
+      ++stat_.instruction_count;
+      ++stat_.movc_instruction_count;
+
+      // 2) Multiply the relative sample offset by sample size.
+      shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ISHL) |
+                             ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+      shader_code_.push_back(
+          EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
+      shader_code_.push_back(edram_coord_sample_temp);
+      shader_code_.push_back(EncodeVectorSwizzledOperand(
+          D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
+      shader_code_.push_back(edram_coord_sample_temp);
       shader_code_.push_back(
           EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, i, 1));
       shader_code_.push_back(rt_64bpp_temp);
       ++stat_.instruction_count;
       ++stat_.int_instruction_count;
 
-      // Add the EDRAM base for the render target to the sample EDRAM addresses.
+      // 3) Add the first sample EDRAM addresses to the sample offsets.
       shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_IADD) |
                              ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
       shader_code_.push_back(
@@ -6427,7 +6717,7 @@ void DxbcShaderTranslator::CompleteShaderCode() {
     // closing upper-level flow control blocks.
     CloseExecConditionals();
     // Close the last label and the switch.
-    if (FLAGS_dxbc_switch) {
+    if (UseSwitchForControlFlow()) {
       shader_code_.push_back(
           ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_BREAK) |
           ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(1));
@@ -7982,7 +8272,7 @@ void DxbcShaderTranslator::ProcessLabel(uint32_t cf_index) {
   // execs across labels.
   CloseExecConditionals();
 
-  if (FLAGS_dxbc_switch) {
+  if (UseSwitchForControlFlow()) {
     // Fallthrough to the label from the previous one on the next iteration if
     // no `continue` was done. Can't simply fallthrough because in DXBC, a
     // non-empty switch case must end with a break.
@@ -8067,7 +8357,7 @@ void DxbcShaderTranslator::ProcessExecInstructionEnd(
   if (instr.is_end) {
     // Break out of the main loop.
     CloseInstructionPredication();
-    if (FLAGS_dxbc_switch) {
+    if (UseSwitchForControlFlow()) {
       // Write an invalid value to pc.
       shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_MOV) |
                              ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
@@ -12970,6 +13260,7 @@ const DxbcShaderTranslator::SystemConstantRdef DxbcShaderTranslator::
         {"xe_edram_poly_offset_front", RdefTypeIndex::kFloat2, 136, 8},
         // vec4 9
         {"xe_edram_poly_offset_back", RdefTypeIndex::kFloat2, 144, 8},
+        {"xe_edram_resolution_scale_log2", RdefTypeIndex::kUint, 152, 4},
         // vec4 10
         {"xe_edram_stencil_reference", RdefTypeIndex::kUint, 160, 4},
         {"xe_edram_stencil_read_mask", RdefTypeIndex::kUint, 164, 4},
@@ -13811,7 +14102,6 @@ void DxbcShaderTranslator::WriteShaderCode() {
   // invariance (needed even in pixel shaders for oDepth invariance).
   shader_object_.push_back(
       ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_DCL_GLOBAL_FLAGS) |
-      D3D11_1_SB_GLOBAL_FLAG_SKIP_OPTIMIZATION |
       ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(1));
 
   // Constant buffers, from most frequenly accessed to least frequently accessed

@@ -262,6 +262,14 @@ class KeyboardInputDialog : public xe::ui::ImGuiDialog {
       }
       ImGui::Spacing();
       ImGui::EndPopup();
+      // Always OK an empty popup
+      if (title_ == "") {
+        if (out_text_) {
+          *out_text_ = xe::to_wstring(text_buffer_.data());
+        }
+        ImGui::CloseCurrentPopup();
+        Close();
+      }
     } else {
       Close();
     }

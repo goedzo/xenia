@@ -10,6 +10,8 @@
 #ifndef XENIA_GPU_DXBC_SHADER_TRANSLATOR_H_
 #define XENIA_GPU_DXBC_SHADER_TRANSLATOR_H_
 
+#include <gflags/gflags.h>
+
 #include <cstring>
 #include <string>
 #include <vector>
@@ -17,6 +19,8 @@
 #include "xenia/base/math.h"
 #include "xenia/base/string_buffer.h"
 #include "xenia/gpu/shader_translator.h"
+
+DECLARE_bool(dxbc_source_map);
 
 namespace xe {
 namespace gpu {
@@ -799,10 +803,6 @@ class DxbcShaderTranslator : public ShaderTranslator {
   uint32_t PushSystemTemp(bool zero = false);
   // Frees the last allocated internal r# registers for later reuse.
   void PopSystemTemp(uint32_t count = 1);
-
-  // Whether general-purpose register values should be stored in x0 rather than
-  // r# in this shader.
-  bool IndexableGPRsUsed() const;
 
   // Writing the prologue.
   void StartVertexShader_LoadVertexIndex();

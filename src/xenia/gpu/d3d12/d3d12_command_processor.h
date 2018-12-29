@@ -202,12 +202,20 @@ class D3D12CommandProcessor : public CommandProcessor {
 
   void UpdateFixedFunctionState(ID3D12GraphicsCommandList* command_list);
   void UpdateSystemConstantValues(
-      PrimitiveType primitive_type, Endian index_endian, uint32_t color_mask,
+      bool shared_memory_is_uav, PrimitiveType primitive_type,
+      Endian index_endian, uint32_t color_mask,
       const RenderTargetCache::PipelineRenderTarget render_targets[4]);
   bool UpdateBindings(ID3D12GraphicsCommandList* command_list,
                       const D3D12Shader* vertex_shader,
                       const D3D12Shader* pixel_shader,
                       ID3D12RootSignature* root_signature);
+
+  // Returns dword count for one element for a memexport format, or 0 if it's
+  // not supported by the D3D12 command processor (if it's smaller that 1 dword,
+  // for instance).
+  // TODO(Triang3l): Check if any game uses memexport with formats smaller than
+  // 32 bits per element.
+  static uint32_t GetSupportedMemExportFormatSize(ColorFormat format);
 
   bool cache_clear_requested_ = false;
 

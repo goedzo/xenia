@@ -47,6 +47,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
   };
 
   enum : uint32_t {
+    kSysFlag_SharedMemoryIsUAV_Shift,
     kSysFlag_XYDividedByW_Shift,
     kSysFlag_ZDividedByW_Shift,
     kSysFlag_WNotReciprocal_Shift,
@@ -70,6 +71,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     kSysFlag_Color2Gamma_Shift,
     kSysFlag_Color3Gamma_Shift,
 
+    kSysFlag_SharedMemoryIsUAV = 1u << kSysFlag_SharedMemoryIsUAV_Shift,
     kSysFlag_XYDividedByW = 1u << kSysFlag_XYDividedByW_Shift,
     kSysFlag_ZDividedByW = 1u << kSysFlag_ZDividedByW_Shift,
     kSysFlag_WNotReciprocal = 1u << kSysFlag_WNotReciprocal_Shift,
@@ -274,7 +276,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
     // vec4 0
     uint32_t flags;
     uint32_t vertex_index_endian;
-    uint32_t vertex_base_index;
+    int32_t vertex_base_index;
     uint32_t pixel_pos_reg;
 
     // vec4 1
@@ -482,6 +484,12 @@ class DxbcShaderTranslator : public ShaderTranslator {
     return sampler_bindings_.data();
   }
 
+  // Unordered access view bindings in space 0.
+  enum class UAVRegister {
+    kSharedMemory,
+    kEDRAM,
+  };
+
   // Returns the bits that need to be added to the RT flags constant - needs to
   // be done externally, not in SetColorFormatConstants, because the flags
   // contain other state.
@@ -513,6 +521,7 @@ class DxbcShaderTranslator : public ShaderTranslator {
   void ProcessLoopEndInstruction(
       const ParsedLoopEndInstruction& instr) override;
   void ProcessJumpInstruction(const ParsedJumpInstruction& instr) override;
+  void ProcessAllocInstruction(const ParsedAllocInstruction& instr) override;
 
   void ProcessVertexFetchInstruction(
       const ParsedVertexFetchInstruction& instr) override;
@@ -727,6 +736,15 @@ class DxbcShaderTranslator : public ShaderTranslator {
 
   // Operand encoding, with 32-bit immediate indices by default. None of the
   // arguments must be shifted when calling.
+  static constexpr uint32_t EncodeZeroComponentOperand(
+      uint32_t type, uint32_t index_dimension,
+      uint32_t index_representation_0 = 0, uint32_t index_representation_1 = 0,
+      uint32_t index_representation_2 = 0) {
+    // D3D10_SB_OPERAND_0_COMPONENT.
+    return 0 | (type << 12) | (index_dimension << 20) |
+           (index_representation_0 << 22) | (index_representation_1 << 25) |
+           (index_representation_0 << 28);
+  }
   static constexpr uint32_t EncodeScalarOperand(
       uint32_t type, uint32_t index_dimension,
       uint32_t index_representation_0 = 0, uint32_t index_representation_1 = 0,
@@ -799,8 +817,9 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // Whether to use switch-case rather than if (pc >= label) for control flow.
   bool UseSwitchForControlFlow() const;
 
-  // Allocates a new r# register for internal use and returns its index.
-  uint32_t PushSystemTemp(bool zero = false);
+  // Allocates new consecutive r# registers for internal use and returns the
+  // index of the first.
+  uint32_t PushSystemTemp(bool zero = false, uint32_t count = 1);
   // Frees the last allocated internal r# registers for later reuse.
   void PopSystemTemp(uint32_t count = 1);
 
@@ -811,6 +830,9 @@ class DxbcShaderTranslator : public ShaderTranslator {
   void StartPixelShader();
 
   // Writing the epilogue.
+  // ExportToMemory modifies the values of eA/eM# for simplicity, don't call
+  // multiple times.
+  void ExportToMemory();
   void CompleteVertexOrDomainShader();
   // Converts four depth values to 24-bit unorm or float, depending on the flag
   // value.
@@ -819,6 +841,11 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // any conditions.
   void CompletePixelShader_GammaCorrect(uint32_t color_temp, bool to_gamma);
   void CompletePixelShader_WriteToRTVs();
+  inline uint32_t GetEDRAMUAVIndex() const {
+    // xe_edram is U1 when there's xe_shared_memory_uav which is U0, but when
+    // there's no xe_shared_memory_uav, it's U0.
+    return is_depth_only_pixel_shader_ ? 0 : 1;
+  }
   // Performs depth/stencil testing. After the test, coverage_out_temp will
   // contain non-zero values for samples that passed the depth/stencil test and
   // are included in SV_Coverage, and zeros for those who didn't.
@@ -942,8 +969,10 @@ class DxbcShaderTranslator : public ShaderTranslator {
   void UnloadDxbcSourceOperand(const DxbcSourceOperand& operand);
 
   // Writes xyzw or xxxx of the specified r# to the destination.
+  // can_store_memexport_address is for safety, to allow only proper MADs with
+  // a stream constant to write to eA.
   void StoreResult(const InstructionResult& result, uint32_t reg,
-                   bool replicate_x);
+                   bool replicate_x, bool can_store_memexport_address = false);
 
   // The nesting of `if` instructions is the following:
   // - pc checks (labels).
@@ -1126,6 +1155,34 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // translation (for the declaration).
   uint32_t system_temp_count_max_;
 
+  // Position in vertex shaders (because viewport and W transformations can be
+  // applied in the end of the shader).
+  uint32_t system_temp_position_;
+
+  // 4 color outputs in pixel shaders (because of exponent bias, alpha test and
+  // remapping, and also for ROV writing).
+  uint32_t system_temps_color_;
+  // Whether the color output has been written in the execution path (ROV only).
+  uint32_t system_temp_color_written_;
+  // Depth value (ROV only). The meaning depends on whether the shader writes to
+  // depth.
+  // If depth is written to:
+  // - X - the value that was written to oDepth.
+  // If not:
+  // - X - clip space Z / clip space W from the respective pixel shader input.
+  // - Y - depth X derivative (for polygon offset).
+  // - Z - depth Y derivative.
+  uint32_t system_temp_depth_;
+
+  // Bits containing whether each eM# has been written, for up to 16 streams, or
+  // UINT32_MAX if memexport is not used. 8 bits (5 used) for each stream, with
+  // 4 `alloc export`s per component.
+  uint32_t system_temp_memexport_written_;
+  // eA in each `alloc export`, or UINT32_MAX if not used.
+  uint32_t system_temps_memexport_address_[kMaxMemExports];
+  // eM# in each `alloc export`, or UINT32_MAX if not used.
+  uint32_t system_temps_memexport_data_[kMaxMemExports][5];
+
   // Vector ALU result/scratch (since Xenos write masks can contain swizzles).
   uint32_t system_temp_pv_;
   // Temporary register ID for previous scalar result, program counter,
@@ -1139,25 +1196,6 @@ class DxbcShaderTranslator : public ShaderTranslator {
   // Explicitly set texture gradients and LOD.
   uint32_t system_temp_grad_h_lod_;
   uint32_t system_temp_grad_v_;
-
-  // Position in vertex shaders (because viewport and W transformations can be
-  // applied in the end of the shader).
-  uint32_t system_temp_position_;
-
-  // Color outputs in pixel shaders (because of exponent bias, alpha test and
-  // remapping).
-  uint32_t system_temp_color_[4];
-  // Whether the color output has been written in the execution path (ROV only).
-  uint32_t system_temp_color_written_;
-  // Depth value (ROV only). The meaning depends on whether the shader writes to
-  // depth.
-  // If depth is written to:
-  // - X - the value that was written to oDepth.
-  // If not:
-  // - X - clip space Z / clip space W from the respective pixel shader input.
-  // - Y - depth X derivative (for polygon offset).
-  // - Z - depth Y derivative.
-  uint32_t system_temp_depth_;
 
   // The bool constant number containing the condition for the currently
   // processed exec (or the last - unless a label has reset this), or
@@ -1185,6 +1223,10 @@ class DxbcShaderTranslator : public ShaderTranslator {
 
   std::vector<TextureSRV> texture_srvs_;
   std::vector<SamplerBinding> sampler_bindings_;
+
+  // Number of `alloc export`s encountered so far in the translation. The index
+  // of the current eA/eM# temp register set is this minus 1, if it's not 0.
+  uint32_t memexport_alloc_current_count_;
 
   // The STAT chunk (based on Wine d3dcompiler_parse_stat).
   struct Statistics {

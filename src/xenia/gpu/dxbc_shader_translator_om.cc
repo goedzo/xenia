@@ -42,7 +42,7 @@ uint32_t DxbcShaderTranslator::GetColorFormatRTFlags(
       // Unused
       kRTFlag_FormatUnusedR | kRTFlag_FormatUnusedG | kRTFlag_FormatUnusedB |
           kRTFlag_FormatUnusedA,
-      // k_2_10_10_10_AS_16_16_16_16
+      // k_2_10_10_10_AS_10_10_10_10
       kRTFlag_FormatFixed,
       // Unused.
       kRTFlag_FormatUnusedR | kRTFlag_FormatUnusedG | kRTFlag_FormatUnusedB |
@@ -82,7 +82,7 @@ void DxbcShaderTranslator::SetColorFormatSystemConstants(
       color_store_scale = alpha_store_scale = 255.0f;
       break;
     case ColorRenderTargetFormat::k_2_10_10_10:
-    case ColorRenderTargetFormat::k_2_10_10_10_AS_16_16_16_16:
+    case ColorRenderTargetFormat::k_2_10_10_10_AS_10_10_10_10:
       constants.edram_rt_pack_width_low[rt_index] =
           10 | (10 << 8) | (10 << 16) | (2 << 24);
       constants.edram_rt_pack_offset_low[rt_index] =
@@ -729,10 +729,10 @@ void DxbcShaderTranslator::CompletePixelShader_DepthTo24Bit(
   ++stat_.instruction_count;
   ++stat_.float_instruction_count;
 
-  // Round to the nearest integer. This is the correct way of rounding, rounding
-  // towards zero gives 0xFF instead of 0x100 in clear shaders in, for instance,
-  // Halo 3.
-  // https://docs.microsoft.com/en-us/windows/desktop/direct3d10/d3d10-graphics-programming-guide-resources-data-conversion
+  // Round to the nearest even integer. This seems to be the correct way:
+  // rounding towards zero gives 0xFF instead of 0x100 in clear shaders in, for
+  // instance, Halo 3, but other clear shaders in it are also broken if 0.5 is
+  // added before ftou instead of round_ne.
   shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ROUND_NE) |
                          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
   shader_code_.push_back(
@@ -899,7 +899,7 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToRTVs() {
     shader_code_.push_back(gamma_temp);
     ++stat_.instruction_count;
     ++stat_.dynamic_flow_control_count;
-    CompletePixelShader_GammaCorrect(system_temp_color_[i], true);
+    CompletePixelShader_GammaCorrect(system_temps_color_ + i, true);
     shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ENDIF) |
                            ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(1));
     ++stat_.instruction_count;
@@ -948,7 +948,7 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToRTVs() {
       shader_code_.push_back(remap_movc_mask_temp);
       shader_code_.push_back(EncodeVectorSwizzledOperand(
           D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
-      shader_code_.push_back(system_temp_color_[j]);
+      shader_code_.push_back(system_temps_color_ + j);
       shader_code_.push_back(EncodeVectorSwizzledOperand(
           D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
       shader_code_.push_back(remap_movc_target_temp);
@@ -1498,8 +1498,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV_DepthStencil(
     shader_code_.push_back(edram_dword_offset_temp);
     shader_code_.push_back(EncodeVectorReplicatedOperand(
         D3D11_SB_OPERAND_TYPE_UNORDERED_ACCESS_VIEW, 0, 2));
-    shader_code_.push_back(0);
-    shader_code_.push_back(0);
+    shader_code_.push_back(GetEDRAMUAVIndex());
+    shader_code_.push_back(uint32_t(UAVRegister::kEDRAM));
     ++stat_.instruction_count;
     ++stat_.texture_load_instructions;
 
@@ -2351,8 +2351,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV_DepthStencil(
         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(8));
     shader_code_.push_back(EncodeVectorMaskedOperand(
         D3D11_SB_OPERAND_TYPE_UNORDERED_ACCESS_VIEW, 0b1111, 2));
-    shader_code_.push_back(0);
-    shader_code_.push_back(0);
+    shader_code_.push_back(GetEDRAMUAVIndex());
+    shader_code_.push_back(uint32_t(UAVRegister::kEDRAM));
     shader_code_.push_back(
         EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, i, 1));
     shader_code_.push_back(edram_dword_offset_temp);
@@ -3646,8 +3646,9 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV_PackColor(
   ++stat_.instruction_count;
   ++stat_.float_instruction_count;
 
-  // Convert to fixed-point, rounding to the nearest integer.
-  // https://docs.microsoft.com/en-us/windows/desktop/direct3d10/d3d10-graphics-programming-guide-resources-data-conversion
+  // Convert to fixed-point, rounding towards the nearest even integer.
+  // Rounding towards the nearest (adding +-0.5 before truncating) is giving
+  // incorrect results for depth, so better to use round_ne here too.
   uint32_t fixed_temp = PushSystemTemp();
   shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_ROUND_NE) |
                          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(5));
@@ -4208,9 +4209,7 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
       EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0100, 1));
   shader_code_.push_back(edram_coord_pixel_temp);
   shader_code_.push_back(
-      ENCODE_D3D10_SB_OPERAND_NUM_COMPONENTS(D3D10_SB_OPERAND_0_COMPONENT) |
-      ENCODE_D3D10_SB_OPERAND_TYPE(D3D10_SB_OPERAND_TYPE_NULL) |
-      ENCODE_D3D10_SB_OPERAND_INDEX_DIMENSION(D3D10_SB_OPERAND_INDEX_0D));
+      EncodeZeroComponentOperand(D3D10_SB_OPERAND_TYPE_NULL, 0));
   shader_code_.push_back(
       EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
   shader_code_.push_back(edram_coord_pixel_temp);
@@ -5048,8 +5047,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
           shader_code_.push_back(edram_coord_sample_temp);
           shader_code_.push_back(EncodeVectorReplicatedOperand(
               D3D11_SB_OPERAND_TYPE_UNORDERED_ACCESS_VIEW, 0, 2));
-          shader_code_.push_back(0);
-          shader_code_.push_back(0);
+          shader_code_.push_back(GetEDRAMUAVIndex());
+          shader_code_.push_back(uint32_t(UAVRegister::kEDRAM));
           ++stat_.instruction_count;
           ++stat_.texture_load_instructions;
 
@@ -5139,7 +5138,7 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
       shader_code_.push_back(src_color_temp);
       shader_code_.push_back(EncodeVectorSwizzledOperand(
           D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
-      shader_code_.push_back(system_temp_color_[i]);
+      shader_code_.push_back(system_temps_color_ + i);
       ++stat_.instruction_count;
       ++stat_.mov_instruction_count;
 
@@ -5405,8 +5404,8 @@ void DxbcShaderTranslator::CompletePixelShader_WriteToROV() {
               ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(8));
           shader_code_.push_back(EncodeVectorMaskedOperand(
               D3D11_SB_OPERAND_TYPE_UNORDERED_ACCESS_VIEW, 0b1111, 2));
-          shader_code_.push_back(0);
-          shader_code_.push_back(0);
+          shader_code_.push_back(GetEDRAMUAVIndex());
+          shader_code_.push_back(uint32_t(UAVRegister::kEDRAM));
           shader_code_.push_back(
               EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, k, 1));
           shader_code_.push_back(edram_coord_sample_temp);
@@ -5488,7 +5487,7 @@ void DxbcShaderTranslator::CompletePixelShader() {
   shader_code_.push_back(alpha_test_reg);
   shader_code_.push_back(
       EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 3, 1));
-  shader_code_.push_back(system_temp_color_[0]);
+  shader_code_.push_back(system_temps_color_);
   shader_code_.push_back(EncodeVectorSelectOperand(
       D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER, kSysConst_AlphaTestRange_Comp, 3));
   shader_code_.push_back(cbuffer_index_system_constants_);
@@ -5510,7 +5509,7 @@ void DxbcShaderTranslator::CompletePixelShader() {
   shader_code_.push_back(kSysConst_AlphaTestRange_Vec);
   shader_code_.push_back(
       EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 3, 1));
-  shader_code_.push_back(system_temp_color_[0]);
+  shader_code_.push_back(system_temps_color_);
   ++stat_.instruction_count;
   ++stat_.float_instruction_count;
   // Check if both tests have passed and the alpha is in the range.
@@ -5587,10 +5586,10 @@ void DxbcShaderTranslator::CompletePixelShader() {
                            ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
     shader_code_.push_back(
         EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b1111, 1));
-    shader_code_.push_back(system_temp_color_[i]);
+    shader_code_.push_back(system_temps_color_ + i);
     shader_code_.push_back(EncodeVectorSwizzledOperand(
         D3D10_SB_OPERAND_TYPE_TEMP, kSwizzleXYZW, 1));
-    shader_code_.push_back(system_temp_color_[i]);
+    shader_code_.push_back(system_temps_color_ + i);
     shader_code_.push_back(EncodeVectorReplicatedOperand(
         D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER, i, 3));
     shader_code_.push_back(cbuffer_index_system_constants_);

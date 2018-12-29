@@ -156,7 +156,8 @@ enum class IndexFormat : uint32_t {
   kInt32,
 };
 
-// GPUSURFACENUMBER from a game .pdb.
+// GPUSURFACENUMBER from a game .pdb. "Repeat" means repeating fraction, it's
+// what ATI calls normalized.
 enum class SurfaceNumFormat : uint32_t {
   kUnsignedRepeat = 0,
   kSignedRepeat = 1,
@@ -187,7 +188,7 @@ enum class ColorRenderTargetFormat : uint32_t {
   k_16_16_16_16 = 5,
   k_16_16_FLOAT = 6,
   k_16_16_16_16_FLOAT = 7,
-  k_2_10_10_10_AS_16_16_16_16 = 10,
+  k_2_10_10_10_AS_10_10_10_10 = 10,
   k_2_10_10_10_FLOAT_AS_16_16_16_16 = 12,
   k_32_FLOAT = 14,
   k_32_32_FLOAT = 15,

@@ -104,9 +104,20 @@ class SharedMemory {
   void RangeWrittenByGPU(uint32_t start, uint32_t length);
 
   // Makes the buffer usable for vertices, indices and texture untiling.
-  void UseForReading();
+  inline void UseForReading() {
+    // Vertex fetch is also allowed in pixel shaders.
+    TransitionBuffer(D3D12_RESOURCE_STATE_INDEX_BUFFER |
+                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+  }
   // Makes the buffer usable for texture tiling after a resolve.
-  void UseForWriting();
+  inline void UseForWriting() {
+    TransitionBuffer(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+  }
+  // Makes the buffer usable as a source for copy commands.
+  inline void UseAsCopySource() {
+    TransitionBuffer(D3D12_RESOURCE_STATE_COPY_SOURCE);
+  }
 
   void CreateSRV(D3D12_CPU_DESCRIPTOR_HANDLE handle);
   void CreateRawUAV(D3D12_CPU_DESCRIPTOR_HANDLE handle);
@@ -130,13 +141,16 @@ class SharedMemory {
   D3D12_GPU_VIRTUAL_ADDRESS buffer_gpu_address_ = 0;
   D3D12_RESOURCE_STATES buffer_state_ = D3D12_RESOURCE_STATE_COPY_DEST;
 
-  // Heaps are 16 MB, so not too many of them are allocated.
-  static constexpr uint32_t kHeapSizeLog2 = 24;
+  // Heaps are 4 MB, so not too many of them are allocated, but also not to
+  // waste too much memory for padding (with 16 MB there's too much).
+  static constexpr uint32_t kHeapSizeLog2 = 22;
   static constexpr uint32_t kHeapSize = 1 << kHeapSizeLog2;
   static_assert((kHeapSize % D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES) == 0,
                 "Heap size must be a multiple of Direct3D tile size");
   // Resident portions of the tiled buffer.
   ID3D12Heap* heaps_[kBufferSize >> kHeapSizeLog2] = {};
+  // Number of the heaps currently resident, for profiling.
+  uint32_t heap_count_ = 0;
   // Whether creation of a heap has failed in the current frame.
   bool heap_creation_failed_ = false;
 

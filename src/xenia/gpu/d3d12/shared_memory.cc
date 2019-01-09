@@ -94,6 +94,7 @@ bool SharedMemory::Initialize() {
   buffer_gpu_address_ = buffer_->GetGPUVirtualAddress();
 
   std::memset(heaps_, 0, sizeof(heaps_));
+  heap_count_ = 0;
   heap_creation_failed_ = false;
 
   std::memset(valid_pages_.data(), 0, valid_pages_.size() * sizeof(uint64_t));
@@ -124,6 +125,8 @@ void SharedMemory::Shutdown() {
     for (uint32_t i = 0; i < xe::countof(heaps_); ++i) {
       ui::d3d12::util::ReleaseAndNull(heaps_[i]);
     }
+    heap_count_ = 0;
+    COUNT_profile_set("gpu/shared_memory/mb_used", 0);
   }
 }
 
@@ -277,6 +280,9 @@ bool SharedMemory::MakeTilesResident(uint32_t start, uint32_t length) {
       heap_creation_failed_ = true;
       return false;
     }
+    ++heap_count_;
+    COUNT_profile_set("gpu/shared_memory/mb_used",
+                      heap_count_ << kHeapSizeLog2 >> 20);
     D3D12_TILED_RESOURCE_COORDINATE region_start_coordinates;
     region_start_coordinates.X =
         (i << kHeapSizeLog2) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
@@ -313,10 +319,7 @@ bool SharedMemory::RequestRange(uint32_t start, uint32_t length) {
   }
   uint32_t last = start + length - 1;
 
-  auto command_list = command_processor_->GetCurrentCommandList();
-  if (command_list == nullptr) {
-    return false;
-  }
+  auto command_list = command_processor_->GetDeferredCommandList();
 
 #if FINE_GRAINED_DRAW_SCOPES
   SCOPE_profile_cpu_f("gpu");
@@ -354,7 +357,7 @@ bool SharedMemory::RequestRange(uint32_t start, uint32_t length) {
           upload_buffer_mapping,
           memory_->TranslatePhysical(upload_range_start << page_size_log2_),
           upload_buffer_size);
-      command_list->CopyBufferRegion(
+      command_list->D3DCopyBufferRegion(
           buffer_, upload_range_start << page_size_log2_, upload_buffer,
           upload_buffer_offset, upload_buffer_size);
       upload_range_start += upload_buffer_pages;
@@ -568,17 +571,6 @@ void SharedMemory::MemoryWriteCallback(uint32_t page_first,
 void SharedMemory::TransitionBuffer(D3D12_RESOURCE_STATES new_state) {
   command_processor_->PushTransitionBarrier(buffer_, buffer_state_, new_state);
   buffer_state_ = new_state;
-}
-
-void SharedMemory::UseForReading() {
-  // Vertex fetch also seems to be allowed in pixel shaders.
-  TransitionBuffer(D3D12_RESOURCE_STATE_INDEX_BUFFER |
-                   D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
-                   D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-}
-
-void SharedMemory::UseForWriting() {
-  TransitionBuffer(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
 void SharedMemory::CreateSRV(D3D12_CPU_DESCRIPTOR_HANDLE handle) {

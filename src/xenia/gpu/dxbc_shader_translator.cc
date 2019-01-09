@@ -177,11 +177,10 @@ void DxbcShaderTranslator::PopSystemTemp(uint32_t count) {
 
 void DxbcShaderTranslator::StartVertexShader_LoadVertexIndex() {
   // Vertex index is in an input bound to SV_VertexID, byte swapped according to
-  // xe_vertex_index_endian system constant and written to GPR 0 (which is
-  // always present because register_count includes +1).
-  // TODO(Triang3l): Check if there's vs_param_gen.
+  // xe_vertex_index_endian_and_edge_factors system constant and written to GPR
+  // 0 (which is always present because register_count includes +1).
 
-  // xe_vertex_index_endian is:
+  // xe_vertex_index_endian_and_edge_factors & 0b11 is:
   // - 00 for no swap.
   // - 01 for 8-in-16.
   // - 10 for 8-in-32 (8-in-16 and 16-in-32).
@@ -263,9 +262,11 @@ void DxbcShaderTranslator::StartVertexShader_LoadVertexIndex() {
   ++stat_.uint_instruction_count;
 
   // Get bits indicating what swaps should be done.
-  // ubfe reg.zw, l(0, 0, 1, 1).zw, l(0, 0, 0, 1).zw, xe_vertex_index_endian.xx
+  // ubfe reg.zw, l(0, 0, 1, 1).zw, l(0, 0, 0, 1).zw,
+  //      xe_vertex_index_endian_and_edge_factors.xx
   // ABCD | BADC | 8in16/16in32? | 8in32/16in32?
-  system_constants_used_ |= 1ull << kSysConst_VertexIndexEndian_Index;
+  system_constants_used_ |= 1ull
+                            << kSysConst_VertexIndexEndianAndEdgeFactors_Index;
   shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D11_SB_OPCODE_UBFE) |
                          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(17));
   shader_code_.push_back(
@@ -283,12 +284,12 @@ void DxbcShaderTranslator::StartVertexShader_LoadVertexIndex() {
   shader_code_.push_back(0);
   shader_code_.push_back(0);
   shader_code_.push_back(1);
-  shader_code_.push_back(
-      EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
-                                    kSysConst_VertexIndexEndian_Comp, 3));
+  shader_code_.push_back(EncodeVectorReplicatedOperand(
+      D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+      kSysConst_VertexIndexEndianAndEdgeFactors_Comp, 3));
   shader_code_.push_back(uint32_t(cbuffer_index_system_constants_));
   shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
-  shader_code_.push_back(kSysConst_VertexIndexEndian_Vec);
+  shader_code_.push_back(kSysConst_VertexIndexEndianAndEdgeFactors_Vec);
   ++stat_.instruction_count;
   ++stat_.uint_instruction_count;
 
@@ -3025,7 +3026,7 @@ const DxbcShaderTranslator::SystemConstantRdef DxbcShaderTranslator::
     system_constant_rdef_[DxbcShaderTranslator::kSysConst_Count] = {
         // vec4 0
         {"xe_flags", RdefTypeIndex::kUint, 0, 4},
-        {"xe_vertex_index_endian", RdefTypeIndex::kUint, 4, 4},
+        {"xe_vertex_index_endian_and_edge_factors", RdefTypeIndex::kUint, 4, 4},
         {"xe_vertex_base_index", RdefTypeIndex::kInt, 8, 4},
         {"xe_pixel_pos_reg", RdefTypeIndex::kUint, 12, 4},
         // vec4 1
@@ -4106,63 +4107,65 @@ void DxbcShaderTranslator::WriteShaderCode() {
     shader_object_.push_back(0);
   }
 
-  // Samplers.
-  for (uint32_t i = 0; i < uint32_t(sampler_bindings_.size()); ++i) {
-    const SamplerBinding& sampler_binding = sampler_bindings_[i];
+  if (!is_depth_only_pixel_shader_) {
+    // Samplers.
+    for (uint32_t i = 0; i < uint32_t(sampler_bindings_.size()); ++i) {
+      const SamplerBinding& sampler_binding = sampler_bindings_[i];
+      shader_object_.push_back(
+          ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_DCL_SAMPLER) |
+          ENCODE_D3D10_SB_SAMPLER_MODE(D3D10_SB_SAMPLER_MODE_DEFAULT) |
+          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(6));
+      shader_object_.push_back(EncodeVectorSwizzledOperand(
+          D3D10_SB_OPERAND_TYPE_SAMPLER, kSwizzleXYZW, 3));
+      shader_object_.push_back(i);
+      shader_object_.push_back(i);
+      shader_object_.push_back(i);
+      shader_object_.push_back(0);
+    }
+
+    // Shader resources.
+    // Shared memory ByteAddressBuffer (T0, at t0, space0).
     shader_object_.push_back(
-        ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_DCL_SAMPLER) |
-        ENCODE_D3D10_SB_SAMPLER_MODE(D3D10_SB_SAMPLER_MODE_DEFAULT) |
+        ENCODE_D3D10_SB_OPCODE_TYPE(D3D11_SB_OPCODE_DCL_RESOURCE_RAW) |
         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(6));
     shader_object_.push_back(EncodeVectorSwizzledOperand(
-        D3D10_SB_OPERAND_TYPE_SAMPLER, kSwizzleXYZW, 3));
-    shader_object_.push_back(i);
-    shader_object_.push_back(i);
-    shader_object_.push_back(i);
-    shader_object_.push_back(0);
-  }
-
-  // Shader resources.
-  // Shared memory ByteAddressBuffer (T0, at t0, space0).
-  shader_object_.push_back(
-      ENCODE_D3D10_SB_OPCODE_TYPE(D3D11_SB_OPCODE_DCL_RESOURCE_RAW) |
-      ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(6));
-  shader_object_.push_back(EncodeVectorSwizzledOperand(
-      D3D10_SB_OPERAND_TYPE_RESOURCE, kSwizzleXYZW, 3));
-  shader_object_.push_back(0);
-  shader_object_.push_back(0);
-  shader_object_.push_back(0);
-  shader_object_.push_back(0);
-  // Textures.
-  for (uint32_t i = 0; i < uint32_t(texture_srvs_.size()); ++i) {
-    const TextureSRV& texture_srv = texture_srvs_[i];
-    D3D10_SB_RESOURCE_DIMENSION texture_srv_dimension;
-    switch (texture_srv.dimension) {
-      case TextureDimension::k3D:
-        texture_srv_dimension = D3D10_SB_RESOURCE_DIMENSION_TEXTURE3D;
-        break;
-      case TextureDimension::kCube:
-        texture_srv_dimension = D3D10_SB_RESOURCE_DIMENSION_TEXTURECUBE;
-        break;
-      default:
-        texture_srv_dimension = D3D10_SB_RESOURCE_DIMENSION_TEXTURE2DARRAY;
-    }
-    shader_object_.push_back(
-        ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_DCL_RESOURCE) |
-        ENCODE_D3D10_SB_RESOURCE_DIMENSION(texture_srv_dimension) |
-        ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
-    shader_object_.push_back(EncodeVectorSwizzledOperand(
         D3D10_SB_OPERAND_TYPE_RESOURCE, kSwizzleXYZW, 3));
-    // T0 is shared memory.
-    shader_object_.push_back(1 + i);
-    // t0 is shared memory.
-    shader_object_.push_back(1 + i);
-    shader_object_.push_back(1 + i);
-    shader_object_.push_back(
-        ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 0) |
-        ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 1) |
-        ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 2) |
-        ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 3));
     shader_object_.push_back(0);
+    shader_object_.push_back(0);
+    shader_object_.push_back(0);
+    shader_object_.push_back(0);
+    // Textures.
+    for (uint32_t i = 0; i < uint32_t(texture_srvs_.size()); ++i) {
+      const TextureSRV& texture_srv = texture_srvs_[i];
+      D3D10_SB_RESOURCE_DIMENSION texture_srv_dimension;
+      switch (texture_srv.dimension) {
+        case TextureDimension::k3D:
+          texture_srv_dimension = D3D10_SB_RESOURCE_DIMENSION_TEXTURE3D;
+          break;
+        case TextureDimension::kCube:
+          texture_srv_dimension = D3D10_SB_RESOURCE_DIMENSION_TEXTURECUBE;
+          break;
+        default:
+          texture_srv_dimension = D3D10_SB_RESOURCE_DIMENSION_TEXTURE2DARRAY;
+      }
+      shader_object_.push_back(
+          ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_DCL_RESOURCE) |
+          ENCODE_D3D10_SB_RESOURCE_DIMENSION(texture_srv_dimension) |
+          ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+      shader_object_.push_back(EncodeVectorSwizzledOperand(
+          D3D10_SB_OPERAND_TYPE_RESOURCE, kSwizzleXYZW, 3));
+      // T0 is shared memory.
+      shader_object_.push_back(1 + i);
+      // t0 is shared memory.
+      shader_object_.push_back(1 + i);
+      shader_object_.push_back(1 + i);
+      shader_object_.push_back(
+          ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 0) |
+          ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 1) |
+          ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 2) |
+          ENCODE_D3D10_SB_RESOURCE_RETURN_TYPE(D3D10_SB_RETURN_TYPE_FLOAT, 3));
+      shader_object_.push_back(0);
+    }
   }
 
   // Unordered access views.

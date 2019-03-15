@@ -211,7 +211,8 @@ class D3D12CommandProcessor : public CommandProcessor {
   void UpdateFixedFunctionState();
   void UpdateSystemConstantValues(
       bool shared_memory_is_uav, PrimitiveType primitive_type,
-      Endian index_endian, uint32_t edge_factor_base, uint32_t color_mask,
+      uint32_t line_loop_closing_index, Endian index_endian,
+      uint32_t edge_factor_base, uint32_t color_mask,
       const RenderTargetCache::PipelineRenderTarget render_targets[4]);
   bool UpdateBindings(const D3D12Shader* vertex_shader,
                       const D3D12Shader* pixel_shader,
@@ -223,6 +224,10 @@ class D3D12CommandProcessor : public CommandProcessor {
   // TODO(Triang3l): Check if any game uses memexport with formats smaller than
   // 32 bits per element.
   static uint32_t GetSupportedMemExportFormatSize(ColorFormat format);
+
+  // Returns a buffer for reading GPU data back to the CPU. Assuming
+  // synchronizing immediately after use. Always in COPY_DEST state.
+  ID3D12Resource* RequestReadbackBuffer(uint32_t size);
 
   bool cache_clear_requested_ = false;
 
@@ -279,6 +284,10 @@ class D3D12CommandProcessor : public CommandProcessor {
   uint32_t scratch_buffer_size_ = 0;
   D3D12_RESOURCE_STATES scratch_buffer_state_;
   bool scratch_buffer_used_ = false;
+
+  static constexpr uint32_t kReadbackBufferSizeIncrement = 16 * 1024 * 1024;
+  ID3D12Resource* readback_buffer_ = nullptr;
+  uint32_t readback_buffer_size_ = 0;
 
   uint32_t current_queue_frame_ = UINT32_MAX;
 

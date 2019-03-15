@@ -89,6 +89,55 @@ DxbcShaderTranslator::DxbcShaderTranslator(uint32_t vendor_id,
 }
 DxbcShaderTranslator::~DxbcShaderTranslator() = default;
 
+std::vector<uint8_t> DxbcShaderTranslator::ForceEarlyDepthStencil(
+    const uint8_t* shader) {
+  const uint32_t* old_shader = reinterpret_cast<const uint32_t*>(shader);
+
+  // To return something anyway even if patching fails.
+  std::vector<uint8_t> new_shader;
+  uint32_t shader_size_bytes = old_shader[6];
+  new_shader.resize(shader_size_bytes);
+  std::memcpy(new_shader.data(), shader, shader_size_bytes);
+
+  // Find the SHEX chunk.
+  uint32_t chunk_count = old_shader[7];
+  for (uint32_t i = 0; i < chunk_count; ++i) {
+    uint32_t chunk_offset_bytes = old_shader[8 + i];
+    const uint32_t* chunk = old_shader + chunk_offset_bytes / sizeof(uint32_t);
+    if (chunk[0] != 'XEHS') {
+      continue;
+    }
+    // Find dcl_globalFlags and patch it.
+    uint32_t code_size_dwords = chunk[3];
+    chunk += 4;
+    for (uint32_t j = 0; j < code_size_dwords;) {
+      uint32_t opcode_token = chunk[j];
+      uint32_t opcode = DECODE_D3D10_SB_OPCODE_TYPE(opcode_token);
+      if (opcode == D3D10_SB_OPCODE_DCL_GLOBAL_FLAGS) {
+        opcode_token |= D3D11_SB_GLOBAL_FLAG_FORCE_EARLY_DEPTH_STENCIL;
+        std::memcpy(new_shader.data() +
+                        (chunk_offset_bytes + (4 + j) * sizeof(uint32_t)),
+                    &opcode_token, sizeof(uint32_t));
+        // Recalculate the checksum since the shader was modified.
+        CalculateDXBCChecksum(
+            reinterpret_cast<unsigned char*>(new_shader.data()),
+            shader_size_bytes,
+            reinterpret_cast<unsigned int*>(new_shader.data() +
+                                            sizeof(uint32_t)));
+        break;
+      }
+      if (opcode == D3D10_SB_OPCODE_CUSTOMDATA) {
+        j += chunk[j + 1];
+      } else {
+        j += DECODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(opcode_token);
+      }
+    }
+    break;
+  }
+
+  return std::move(new_shader);
+}
+
 std::vector<uint8_t> DxbcShaderTranslator::CreateDepthOnlyPixelShader() {
   Reset();
   is_depth_only_pixel_shader_ = true;
@@ -195,6 +244,40 @@ void DxbcShaderTranslator::StartVertexShader_LoadVertexIndex() {
     reg = 0;
   }
 
+  // Check if the closing vertex of a non-indexed line loop is being processed.
+  system_constants_used_ |= 1ull << kSysConst_LineLoopClosingIndex_Index;
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_INE) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(9));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0001, 1));
+  shader_code_.push_back(reg);
+  shader_code_.push_back(
+      EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_INPUT, 0, 1));
+  shader_code_.push_back(uint32_t(InOutRegister::kVSInVertexIndex));
+  shader_code_.push_back(
+      EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_CONSTANT_BUFFER,
+                                kSysConst_LineLoopClosingIndex_Comp, 3));
+  shader_code_.push_back(cbuffer_index_system_constants_);
+  shader_code_.push_back(uint32_t(CbufferRegister::kSystemConstants));
+  shader_code_.push_back(kSysConst_LineLoopClosingIndex_Vec);
+  ++stat_.instruction_count;
+  ++stat_.int_instruction_count;
+  // Zero the index if processing the closing vertex of a line loop, or do
+  // nothing (replace 0 with 0) if not needed.
+  shader_code_.push_back(ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_AND) |
+                         ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(7));
+  shader_code_.push_back(
+      EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0001, 1));
+  shader_code_.push_back(reg);
+  shader_code_.push_back(
+      EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_INPUT, 0, 1));
+  shader_code_.push_back(uint32_t(InOutRegister::kVSInVertexIndex));
+  shader_code_.push_back(
+      EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
+  shader_code_.push_back(reg);
+  ++stat_.instruction_count;
+  ++stat_.uint_instruction_count;
+
   // 8-in-16: Create target for A and C insertion in Y and sources in X and Z.
   // ushr reg.xyz, input, l(0, 8, 16, 0)
   // ABCD | BCD0 | CD00 | unused
@@ -204,8 +287,8 @@ void DxbcShaderTranslator::StartVertexShader_LoadVertexIndex() {
       EncodeVectorMaskedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0b0111, 1));
   shader_code_.push_back(reg);
   shader_code_.push_back(
-      EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_INPUT, 0, 1));
-  shader_code_.push_back(uint32_t(InOutRegister::kVSInVertexIndex));
+      EncodeVectorReplicatedOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
+  shader_code_.push_back(reg);
   shader_code_.push_back(EncodeVectorSwizzledOperand(
       D3D10_SB_OPERAND_TYPE_IMMEDIATE32, kSwizzleXYZW, 0));
   shader_code_.push_back(0);
@@ -1893,12 +1976,15 @@ uint32_t DxbcShaderTranslator::DxbcSourceOperandLength(
       // totally invalid operand replaced by a literal.
       return 5;
   }
-  // Apply both the operand negation and the usage negation (for subtraction)
-  // and absolute from both sources.
-  if (operand.is_negated) {
-    negate = !negate;
+  // Apply overrides (for instance, for subtraction). Xenos operand modifiers
+  // are ignored when forcing absolute value (though negated absolute can still
+  // be forced in this case).
+  if (!absolute) {
+    if (operand.is_negated) {
+      negate = !negate;
+    }
+    absolute |= operand.is_absolute_value;
   }
-  absolute |= operand.is_absolute_value;
   // Modifier extension - neg/abs or non-uniform binding index.
   if (negate || absolute) {
     ++length;
@@ -1932,12 +2018,15 @@ void DxbcShaderTranslator::UseDxbcSourceOperand(
                       (swizzle << D3D10_SB_OPERAND_4_COMPONENT_SWIZZLE_SHIFT);
   }
 
-  // Apply both the operand negation and the usage negation (for subtraction)
-  // and absolute value from both sources.
-  if (operand.is_negated) {
-    negate = !negate;
+  // Apply overrides (for instance, for subtraction). Xenos operand modifiers
+  // are ignored when forcing absolute value (though negated absolute can still
+  // be forced in this case).
+  if (!absolute) {
+    if (operand.is_negated) {
+      negate = !negate;
+    }
+    absolute |= operand.is_absolute_value;
   }
-  absolute |= operand.is_absolute_value;
   // Build OperandToken1 for modifiers (negate, absolute, minimum precision,
   // non-uniform binding index) - if it has any, it will be non-zero.
   // NOTE: AMD GPUs or drivers do NOT support non-uniform constant buffer
@@ -2931,7 +3020,7 @@ void DxbcShaderTranslator::ProcessLoopEndInstruction(
   shader_code_.push_back(system_temp_aL_);
   shader_code_.push_back(
       EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
-  shader_code_.push_back(system_temp_loop_count_);
+  shader_code_.push_back(system_temp_aL_);
   shader_code_.push_back(
       EncodeVectorSelectOperand(D3D10_SB_OPERAND_TYPE_TEMP, 0, 1));
   shader_code_.push_back(aL_add_temp);
@@ -3026,15 +3115,15 @@ const DxbcShaderTranslator::SystemConstantRdef DxbcShaderTranslator::
     system_constant_rdef_[DxbcShaderTranslator::kSysConst_Count] = {
         // vec4 0
         {"xe_flags", RdefTypeIndex::kUint, 0, 4},
-        {"xe_vertex_index_endian_and_edge_factors", RdefTypeIndex::kUint, 4, 4},
-        {"xe_vertex_base_index", RdefTypeIndex::kInt, 8, 4},
-        {"xe_pixel_pos_reg", RdefTypeIndex::kUint, 12, 4},
+        {"xe_line_loop_closing_index", RdefTypeIndex::kUint, 4, 4},
+        {"xe_vertex_index_endian_and_edge_factors", RdefTypeIndex::kUint, 8, 4},
+        {"xe_vertex_base_index", RdefTypeIndex::kInt, 12, 4},
         // vec4 1
         {"xe_ndc_scale", RdefTypeIndex::kFloat3, 16, 12},
-        {"xe_pixel_half_pixel_offset", RdefTypeIndex::kFloat, 28, 4},
+        {"xe_pixel_pos_reg", RdefTypeIndex::kUint, 28, 4},
         // vec4 2
         {"xe_ndc_offset", RdefTypeIndex::kFloat3, 32, 12},
-        {"xe_alpha_test", RdefTypeIndex::kInt, 44, 4},
+        {"xe_pixel_half_pixel_offset", RdefTypeIndex::kFloat, 44, 4},
         // vec4 3
         {"xe_point_size", RdefTypeIndex::kFloat2, 48, 8},
         {"xe_point_size_min_max", RdefTypeIndex::kFloat2, 56, 8},
@@ -3042,9 +3131,9 @@ const DxbcShaderTranslator::SystemConstantRdef DxbcShaderTranslator::
         {"xe_point_screen_to_ndc", RdefTypeIndex::kFloat2, 64, 8},
         {"xe_sample_count_log2", RdefTypeIndex::kUint2, 72, 8},
         // vec4 5
-        {"xe_alpha_test_range", RdefTypeIndex::kFloat2, 80, 8},
-        {"xe_edram_pitch_tiles", RdefTypeIndex::kUint, 88, 4},
-        {"xe_edram_depth_base_dwords", RdefTypeIndex::kUint, 92, 4},
+        {"xe_alpha_test_reference", RdefTypeIndex::kFloat, 80, 4},
+        {"xe_edram_pitch_tiles", RdefTypeIndex::kUint, 84, 4},
+        {"xe_edram_depth_base_dwords", RdefTypeIndex::kUint, 88, 4},
         // vec4 6
         {"xe_color_exp_bias", RdefTypeIndex::kFloat4, 96, 16},
         // vec4 7
@@ -4034,7 +4123,8 @@ void DxbcShaderTranslator::WriteShaderCode() {
   }
 
   // Don't allow refactoring when converting to native code to maintain position
-  // invariance (needed even in pixel shaders for oDepth invariance).
+  // invariance (needed even in pixel shaders for oDepth invariance). Also this
+  // dcl will be modified by ForceEarlyDepthStencil.
   shader_object_.push_back(
       ENCODE_D3D10_SB_OPCODE_TYPE(D3D10_SB_OPCODE_DCL_GLOBAL_FLAGS) |
       ENCODE_D3D10_SB_TOKENIZED_INSTRUCTION_LENGTH(1));

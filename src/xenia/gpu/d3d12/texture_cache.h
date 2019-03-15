@@ -261,6 +261,14 @@ class TextureCache {
     // texture of this format.
     DXGI_FORMAT dxgi_format_resolve_tile;
     ResolveTileMode resolve_tile_mode;
+
+    // Whether the red component must be replicated in the SRV swizzle, for
+    // single-component formats. At least for DXT3A/DXT5A, this is according to
+    // http://fileadmin.cs.lth.se/cs/Personal/Michael_Doggett/talks/unc-xenos-doggett.pdf
+    // k_8 is also used with RGBA swizzle, but assumes replicated components, in
+    // Halo 3 sprites, thus it appears that all single-component formats should
+    // have RRRR swizzle.
+    bool replicate_component;
   };
 
   union TextureKey {
@@ -333,6 +341,7 @@ class TextureCache {
   struct Texture {
     TextureKey key;
     ID3D12Resource* resource;
+    uint64_t resource_size;
     D3D12_RESOURCE_STATES state;
 
     // Byte size of the top guest mip level.
@@ -348,6 +357,11 @@ class TextureCache {
     // Row pitches on each mip level (for linear layout mainly).
     uint32_t pitches[14];
 
+    // SRV descriptor from the cache, for the first swizzle the texture was used
+    // with (which is usually determined by the format, such as RGBA or BGRA).
+    D3D12_CPU_DESCRIPTOR_HANDLE cached_srv_descriptor;
+    uint32_t cached_srv_descriptor_swizzle;
+
     // Watch handles for the memory ranges (protected by the shared memory watch
     // mutex).
     SharedMemory::WatchHandle base_watch_handle;
@@ -358,6 +372,13 @@ class TextureCache {
     // Whether the recent mip data has been loaded from the memory (protected by
     // the shared memory watch mutex).
     bool mips_in_sync;
+  };
+
+  struct SRVDescriptorCachePage {
+    static constexpr uint32_t kHeapSize = 65536;
+    ID3D12DescriptorHeap* heap;
+    D3D12_CPU_DESCRIPTOR_HANDLE heap_start;
+    uint32_t current_usage;
   };
 
   struct LoadConstants {
@@ -522,6 +543,21 @@ class TextureCache {
       resolve_tile_pipelines_[size_t(ResolveTileMode::kCount)] = {};
 
   std::unordered_multimap<uint64_t, Texture*> textures_;
+  uint64_t textures_total_size_ = 0;
+
+  std::vector<SRVDescriptorCachePage> srv_descriptor_cache_;
+
+  enum class NullSRVDescriptorIndex {
+    k2DArray,
+    k3D,
+    kCube,
+
+    kCount,
+  };
+  // Contains null SRV descriptors of dimensions from NullSRVDescriptorIndex.
+  // For copying, not shader-visible.
+  ID3D12DescriptorHeap* null_srv_descriptor_heap_ = nullptr;
+  D3D12_CPU_DESCRIPTOR_HANDLE null_srv_descriptor_heap_start_;
 
   TextureBinding texture_bindings_[32] = {};
   // Bit vector with bits reset on fetch constant writes to avoid getting

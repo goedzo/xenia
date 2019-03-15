@@ -71,6 +71,7 @@ namespace d3d12 {
 #include "xenia/gpu/d3d12/shaders/dxbc/texture_tile_r10g11b11_rgba16_cs.h"
 #include "xenia/gpu/d3d12/shaders/dxbc/texture_tile_r11g11b10_rgba16_cs.h"
 
+constexpr uint32_t TextureCache::SRVDescriptorCachePage::kHeapSize;
 constexpr uint32_t TextureCache::LoadConstants::kGuestPitchTiled;
 constexpr uint32_t TextureCache::kScaledResolveBufferSizeLog2;
 constexpr uint32_t TextureCache::kScaledResolveBufferSize;
@@ -81,284 +82,303 @@ const TextureCache::HostFormat TextureCache::host_formats_[64] = {
     // k_1_REVERSE
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_1
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_8
     {DXGI_FORMAT_R8_TYPELESS, DXGI_FORMAT_R8_UNORM, LoadMode::k8bpb,
      DXGI_FORMAT_R8_SNORM, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R8_UNORM, ResolveTileMode::k8bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R8_UNORM, ResolveTileMode::k8bpp, true},
     // k_1_5_5_5
     {DXGI_FORMAT_B5G5R5A1_UNORM, DXGI_FORMAT_B5G5R5A1_UNORM, LoadMode::k16bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
      LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     ResolveTileMode::k16bppRGBA},
+     ResolveTileMode::k16bppRGBA, false},
     // k_5_6_5
     {DXGI_FORMAT_B5G6R5_UNORM, DXGI_FORMAT_B5G6R5_UNORM, LoadMode::k16bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_B5G6R5_UNORM, ResolveTileMode::k16bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_B5G6R5_UNORM, ResolveTileMode::k16bpp,
+     false},
     // k_6_5_5
     // Green bits in blue, blue bits in green - RBGA swizzle must be used.
     {DXGI_FORMAT_B5G6R5_UNORM, DXGI_FORMAT_B5G6R5_UNORM, LoadMode::k16bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_B5G6R5_UNORM, ResolveTileMode::k16bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_B5G6R5_UNORM, ResolveTileMode::k16bpp,
+     false},
     // k_8_8_8_8
     {DXGI_FORMAT_R8G8B8A8_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM,
      LoadMode::k32bpb, DXGI_FORMAT_R8G8B8A8_SNORM, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     ResolveTileMode::k32bpp},
+     ResolveTileMode::k32bpp, false},
     // k_2_10_10_10
     {DXGI_FORMAT_R10G10B10A2_TYPELESS, DXGI_FORMAT_R10G10B10A2_UNORM,
      LoadMode::k32bpb, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R10G10B10A2_UNORM,
-     ResolveTileMode::k32bpp},
+     ResolveTileMode::k32bpp, false},
     // k_8_A
     {DXGI_FORMAT_R8_TYPELESS, DXGI_FORMAT_R8_UNORM, LoadMode::k8bpb,
      DXGI_FORMAT_R8_SNORM, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R8_UNORM, ResolveTileMode::k8bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R8_UNORM, ResolveTileMode::k8bpp, true},
     // k_8_B
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_8_8
     {DXGI_FORMAT_R8G8_TYPELESS, DXGI_FORMAT_R8G8_UNORM, LoadMode::k16bpb,
      DXGI_FORMAT_R8G8_SNORM, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R8G8_UNORM, ResolveTileMode::k16bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R8G8_UNORM, ResolveTileMode::k16bpp,
+     false},
     // k_Cr_Y1_Cb_Y0_REP
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_Y1_Cr_Y0_Cb_REP
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_16_16_EDRAM
     // Not usable as a texture, also has -32...32 range.
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_8_8_8_8_A
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_4_4_4_4
     {DXGI_FORMAT_B4G4R4A4_UNORM, DXGI_FORMAT_B4G4R4A4_UNORM, LoadMode::k16bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
      LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     ResolveTileMode::k16bppRGBA},
+     ResolveTileMode::k16bppRGBA, false},
     // k_10_11_11
     {DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R16G16B16A16_UNORM,
      LoadMode::kR11G11B10ToRGBA16, DXGI_FORMAT_R16G16B16A16_SNORM,
      LoadMode::kR11G11B10ToRGBA16SNorm, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
-     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR11G11B10AsRGBA16},
+     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR11G11B10AsRGBA16,
+     false},
     // k_11_11_10
     {DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R16G16B16A16_UNORM,
      LoadMode::kR10G11B11ToRGBA16, DXGI_FORMAT_R16G16B16A16_SNORM,
      LoadMode::kR10G11B11ToRGBA16SNorm, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
-     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR10G11B11AsRGBA16},
+     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR10G11B11AsRGBA16,
+     false},
     // k_DXT1
     {DXGI_FORMAT_BC1_UNORM, DXGI_FORMAT_BC1_UNORM, LoadMode::k64bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     LoadMode::kDXT1ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT1ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_DXT2_3
     {DXGI_FORMAT_BC2_UNORM, DXGI_FORMAT_BC2_UNORM, LoadMode::k128bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     LoadMode::kDXT3ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT3ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_DXT4_5
     {DXGI_FORMAT_BC3_UNORM, DXGI_FORMAT_BC3_UNORM, LoadMode::k128bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     LoadMode::kDXT5ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT5ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_16_16_16_16_EDRAM
     // Not usable as a texture, also has -32...32 range.
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // R32_FLOAT for depth because shaders would require an additional SRV to
     // sample stencil, which we don't provide.
     // k_24_8
     {DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT, LoadMode::kDepthUnorm,
      DXGI_FORMAT_R32_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_24_8_FLOAT
     {DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT, LoadMode::kDepthFloat,
      DXGI_FORMAT_R32_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_16
     {DXGI_FORMAT_R16_TYPELESS, DXGI_FORMAT_R16_UNORM, LoadMode::k16bpb,
      DXGI_FORMAT_R16_SNORM, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R16_UNORM, ResolveTileMode::k16bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R16_UNORM, ResolveTileMode::k16bpp, true},
     // k_16_16
-    // TODO(Triang3l): Check if this is the correct way of specifying a signed
-    // resolve destination format.
+    // The resolve format being unorm is correct (with snorm distortion effects
+    // in Halo 3 cause stretching of one corner of the screen).
     {DXGI_FORMAT_R16G16_TYPELESS, DXGI_FORMAT_R16G16_UNORM, LoadMode::k32bpb,
      DXGI_FORMAT_R16G16_SNORM, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R16G16_SNORM, ResolveTileMode::k32bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R16G16_UNORM, ResolveTileMode::k32bpp,
+     false},
     // k_16_16_16_16
-    // TODO(Triang3l): Check if this is the correct way of specifying a signed
-    // resolve destination format.
+    // The resolve format being unorm is correct (with snorm distortion effects
+    // in Halo 3 cause stretching of one corner of the screen).
     {DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R16G16B16A16_UNORM,
      LoadMode::k64bpb, DXGI_FORMAT_R16G16B16A16_SNORM, LoadMode::kUnknown,
-     DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R16G16B16A16_SNORM,
-     ResolveTileMode::k64bpp},
+     DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R16G16B16A16_UNORM,
+     ResolveTileMode::k64bpp, false},
     // k_16_EXPAND
     {DXGI_FORMAT_R16_FLOAT, DXGI_FORMAT_R16_FLOAT, LoadMode::k16bpb,
      DXGI_FORMAT_R16_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R16_FLOAT, ResolveTileMode::k16bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R16_FLOAT, ResolveTileMode::k16bpp, true},
     // k_16_16_EXPAND
     {DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, LoadMode::k32bpb,
      DXGI_FORMAT_R16G16_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R16G16_FLOAT, ResolveTileMode::k32bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R16G16_FLOAT, ResolveTileMode::k32bpp,
+     false},
     // k_16_16_16_16_EXPAND
     {DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT,
      LoadMode::k64bpb, DXGI_FORMAT_R16G16B16A16_FLOAT, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R16G16B16A16_FLOAT,
-     ResolveTileMode::k64bpp},
+     ResolveTileMode::k64bpp, false},
     // k_16_FLOAT
     {DXGI_FORMAT_R16_FLOAT, DXGI_FORMAT_R16_FLOAT, LoadMode::k16bpb,
      DXGI_FORMAT_R16_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R16_FLOAT, ResolveTileMode::k16bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R16_FLOAT, ResolveTileMode::k16bpp, true},
     // k_16_16_FLOAT
     {DXGI_FORMAT_R16G16_FLOAT, DXGI_FORMAT_R16G16_FLOAT, LoadMode::k32bpb,
      DXGI_FORMAT_R16G16_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R16G16_FLOAT, ResolveTileMode::k32bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R16G16_FLOAT, ResolveTileMode::k32bpp,
+     false},
     // k_16_16_16_16_FLOAT
     {DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT,
      LoadMode::k64bpb, DXGI_FORMAT_R16G16B16A16_FLOAT, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R16G16B16A16_FLOAT,
-     ResolveTileMode::k64bpp},
+     ResolveTileMode::k64bpp, false},
     // k_32
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_32_32
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_32_32_32_32
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_32_FLOAT
     {DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT, LoadMode::k32bpb,
      DXGI_FORMAT_R32_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R32_FLOAT, ResolveTileMode::k32bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R32_FLOAT, ResolveTileMode::k32bpp, true},
     // k_32_32_FLOAT
     {DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32_FLOAT, LoadMode::k64bpb,
      DXGI_FORMAT_R32G32_FLOAT, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_R32G32_FLOAT, ResolveTileMode::k64bpp},
+     LoadMode::kUnknown, DXGI_FORMAT_R32G32_FLOAT, ResolveTileMode::k64bpp,
+     false},
     // k_32_32_32_32_FLOAT
     {DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_FORMAT_R32G32B32A32_FLOAT,
      LoadMode::k128bpb, DXGI_FORMAT_R32G32B32A32_FLOAT, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R32G32B32A32_FLOAT,
-     ResolveTileMode::k128bpp},
+     ResolveTileMode::k128bpp, false},
     // k_32_AS_8
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_32_AS_8_8
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_16_MPEG
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_16_16_MPEG
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_8_INTERLACED
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_32_AS_8_INTERLACED
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_32_AS_8_8_INTERLACED
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_16_INTERLACED
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_16_MPEG_INTERLACED
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_16_16_MPEG_INTERLACED
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_DXN
     {DXGI_FORMAT_BC5_UNORM, DXGI_FORMAT_BC5_UNORM, LoadMode::k128bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8_UNORM,
-     LoadMode::kDXNToRG8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXNToRG8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_8_8_8_8_AS_16_16_16_16
     {DXGI_FORMAT_R8G8B8A8_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM,
      LoadMode::k32bpb, DXGI_FORMAT_R8G8B8A8_SNORM, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     ResolveTileMode::k32bpp},
+     ResolveTileMode::k32bpp, false},
     // k_DXT1_AS_16_16_16_16
     {DXGI_FORMAT_BC1_UNORM, DXGI_FORMAT_BC1_UNORM, LoadMode::k64bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     LoadMode::kDXT1ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT1ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_DXT2_3_AS_16_16_16_16
     {DXGI_FORMAT_BC2_UNORM, DXGI_FORMAT_BC2_UNORM, LoadMode::k128bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     LoadMode::kDXT3ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT3ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_DXT4_5_AS_16_16_16_16
     {DXGI_FORMAT_BC3_UNORM, DXGI_FORMAT_BC3_UNORM, LoadMode::k128bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8G8B8A8_UNORM,
-     LoadMode::kDXT5ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT5ToRGBA8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     false},
     // k_2_10_10_10_AS_16_16_16_16
     {DXGI_FORMAT_R10G10B10A2_UNORM, DXGI_FORMAT_R10G10B10A2_UNORM,
      LoadMode::k32bpb, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R10G10B10A2_UNORM,
-     ResolveTileMode::k32bpp},
+     ResolveTileMode::k32bpp, false},
     // k_10_11_11_AS_16_16_16_16
     {DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R16G16B16A16_UNORM,
      LoadMode::kR11G11B10ToRGBA16, DXGI_FORMAT_R16G16B16A16_SNORM,
      LoadMode::kR11G11B10ToRGBA16SNorm, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
-     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR11G11B10AsRGBA16},
+     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR11G11B10AsRGBA16,
+     false},
     // k_11_11_10_AS_16_16_16_16
     {DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R16G16B16A16_UNORM,
      LoadMode::kR10G11B11ToRGBA16, DXGI_FORMAT_R16G16B16A16_SNORM,
      LoadMode::kR10G11B11ToRGBA16SNorm, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
-     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR10G11B11AsRGBA16},
+     DXGI_FORMAT_R16G16B16A16_UNORM, ResolveTileMode::kR10G11B11AsRGBA16,
+     false},
     // k_32_32_32_FLOAT
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_DXT3A
     {DXGI_FORMAT_R8_UNORM, DXGI_FORMAT_R8_UNORM, LoadMode::kDXT3A,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, true},
     // k_DXT5A
     {DXGI_FORMAT_BC4_UNORM, DXGI_FORMAT_BC4_UNORM, LoadMode::k64bpb,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_R8_UNORM,
-     LoadMode::kDXT5AToR8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kDXT5AToR8, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown,
+     true},
     // k_CTX1
     {DXGI_FORMAT_R8G8_UNORM, DXGI_FORMAT_R8G8_UNORM, LoadMode::kCTX1,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_DXT3A_AS_1_1_1_1
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_8_8_8_8_GAMMA_EDRAM
     // Not usable as a texture.
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
     // k_2_10_10_10_FLOAT_EDRAM
     // Not usable as a texture.
     {DXGI_FORMAT_UNKNOWN, DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown,
      DXGI_FORMAT_UNKNOWN, LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN,
-     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown},
+     LoadMode::kUnknown, DXGI_FORMAT_UNKNOWN, ResolveTileMode::kUnknown, false},
 };
 
 const char* const TextureCache::dimension_names_[4] = {"1D", "2D", "3D",
@@ -556,6 +576,61 @@ bool TextureCache::Initialize() {
     }
   }
 
+  // Create a heap with null SRV descriptors, since it's faster to copy a
+  // descriptor than to create an SRV, and null descriptors are used a lot (for
+  // the signed version when only unsigned is used, for instance).
+  D3D12_DESCRIPTOR_HEAP_DESC null_srv_descriptor_heap_desc;
+  null_srv_descriptor_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  null_srv_descriptor_heap_desc.NumDescriptors =
+      uint32_t(NullSRVDescriptorIndex::kCount);
+  null_srv_descriptor_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+  null_srv_descriptor_heap_desc.NodeMask = 0;
+  if (FAILED(device->CreateDescriptorHeap(
+          &null_srv_descriptor_heap_desc,
+          IID_PPV_ARGS(&null_srv_descriptor_heap_)))) {
+    XELOGE("Failed to create the descriptor heap for null SRVs");
+    Shutdown();
+    return false;
+  }
+  null_srv_descriptor_heap_start_ =
+      null_srv_descriptor_heap_->GetCPUDescriptorHandleForHeapStart();
+  D3D12_SHADER_RESOURCE_VIEW_DESC null_srv_desc;
+  null_srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  null_srv_desc.Shader4ComponentMapping =
+      D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+          D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+          D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+          D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0,
+          D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_0);
+  null_srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+  null_srv_desc.Texture2DArray.MostDetailedMip = 0;
+  null_srv_desc.Texture2DArray.MipLevels = 1;
+  null_srv_desc.Texture2DArray.FirstArraySlice = 0;
+  null_srv_desc.Texture2DArray.ArraySize = 1;
+  null_srv_desc.Texture2DArray.PlaneSlice = 0;
+  null_srv_desc.Texture2DArray.ResourceMinLODClamp = 0.0f;
+  device->CreateShaderResourceView(
+      nullptr, &null_srv_desc,
+      provider->OffsetViewDescriptor(
+          null_srv_descriptor_heap_start_,
+          uint32_t(NullSRVDescriptorIndex::k2DArray)));
+  null_srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+  null_srv_desc.Texture3D.MostDetailedMip = 0;
+  null_srv_desc.Texture3D.MipLevels = 1;
+  null_srv_desc.Texture3D.ResourceMinLODClamp = 0.0f;
+  device->CreateShaderResourceView(
+      nullptr, &null_srv_desc,
+      provider->OffsetViewDescriptor(null_srv_descriptor_heap_start_,
+                                     uint32_t(NullSRVDescriptorIndex::k3D)));
+  null_srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+  null_srv_desc.TextureCube.MostDetailedMip = 0;
+  null_srv_desc.TextureCube.MipLevels = 1;
+  null_srv_desc.TextureCube.ResourceMinLODClamp = 0.0f;
+  device->CreateShaderResourceView(
+      nullptr, &null_srv_desc,
+      provider->OffsetViewDescriptor(null_srv_descriptor_heap_start_,
+                                     uint32_t(NullSRVDescriptorIndex::kCube)));
+
   if (IsResolutionScale2X()) {
     scaled_resolve_global_watch_handle_ = shared_memory_->RegisterGlobalWatch(
         ScaledResolveGlobalWatchCallbackThunk, this);
@@ -571,6 +646,8 @@ void TextureCache::Shutdown() {
     shared_memory_->UnregisterGlobalWatch(scaled_resolve_global_watch_handle_);
     scaled_resolve_global_watch_handle_ = nullptr;
   }
+
+  ui::d3d12::util::ReleaseAndNull(null_srv_descriptor_heap_);
 
   for (uint32_t i = 0; i < uint32_t(ResolveTileMode::kCount); ++i) {
     ui::d3d12::util::ReleaseAndNull(resolve_tile_pipelines_[i]);
@@ -606,6 +683,14 @@ void TextureCache::ClearCache() {
   }
   textures_.clear();
   COUNT_profile_set("gpu/texture_cache/textures", 0);
+  textures_total_size_ = 0;
+  COUNT_profile_set("gpu/texture_cache/total_size_kb", 0);
+
+  // Clear texture descriptor cache.
+  for (auto& page : srv_descriptor_cache_) {
+    page.heap->Release();
+  }
+  srv_descriptor_cache_.clear();
 }
 
 void TextureCache::TextureFetchConstantWritten(uint32_t index) {
@@ -791,13 +876,13 @@ void TextureCache::WriteTextureSRV(const D3D12Shader::TextureSRV& texture_srv,
   desc.Format = DXGI_FORMAT_UNKNOWN;
   Dimension binding_dimension;
   uint32_t mip_max_level, array_size;
+  Texture* texture = nullptr;
   ID3D12Resource* resource = nullptr;
 
   const TextureBinding& binding = texture_bindings_[texture_srv.fetch_constant];
   if (!binding.key.IsInvalid()) {
     TextureFormat format = binding.key.format;
 
-    const Texture* texture;
     if (IsSignedVersionSeparate(format) && texture_srv.is_signed) {
       texture = binding.texture_signed;
     } else {
@@ -851,6 +936,7 @@ void TextureCache::WriteTextureSRV(const D3D12Shader::TextureSRV& texture_srv,
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     resource = nullptr;
   }
+  NullSRVDescriptorIndex null_descriptor_index;
   switch (texture_srv.dimension) {
     case TextureDimension::k3D:
       desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
@@ -862,6 +948,7 @@ void TextureCache::WriteTextureSRV(const D3D12Shader::TextureSRV& texture_srv,
         // though it has different dimensions.
         resource = nullptr;
       }
+      null_descriptor_index = NullSRVDescriptorIndex::k3D;
       break;
     case TextureDimension::kCube:
       desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
@@ -871,6 +958,7 @@ void TextureCache::WriteTextureSRV(const D3D12Shader::TextureSRV& texture_srv,
       if (binding_dimension != Dimension::kCube) {
         resource = nullptr;
       }
+      null_descriptor_index = NullSRVDescriptorIndex::kCube;
       break;
     default:
       desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
@@ -884,11 +972,71 @@ void TextureCache::WriteTextureSRV(const D3D12Shader::TextureSRV& texture_srv,
           binding_dimension == Dimension::kCube) {
         resource = nullptr;
       }
+      null_descriptor_index = NullSRVDescriptorIndex::k2DArray;
       break;
   }
-  auto device =
-      command_processor_->GetD3D12Context()->GetD3D12Provider()->GetDevice();
-  device->CreateShaderResourceView(resource, &desc, handle);
+
+  auto provider = command_processor_->GetD3D12Context()->GetD3D12Provider();
+  auto device = provider->GetDevice();
+  if (resource == nullptr) {
+    // Copy a pre-made null descriptor since it's faster than to create an SRV.
+    device->CopyDescriptorsSimple(
+        1, handle,
+        provider->OffsetViewDescriptor(null_srv_descriptor_heap_start_,
+                                       uint32_t(null_descriptor_index)),
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    return;
+  }
+  // Take the descriptor from the cache if it's cached, or create a new one in
+  // the cache, or directly if this texture was already used with a different
+  // swizzle. Profiling results say that CreateShaderResourceView takes the
+  // longest time of draw call processing, and it's very noticeable in many
+  // games.
+  D3D12_CPU_DESCRIPTOR_HANDLE cached_handle = {};
+  assert_not_null(texture);
+  if (texture->cached_srv_descriptor.ptr) {
+    // Use an existing cached descriptor if it has the needed swizzle.
+    if (binding.swizzle == texture->cached_srv_descriptor_swizzle) {
+      cached_handle = texture->cached_srv_descriptor;
+    }
+  } else {
+    // Try to create a new cached descriptor if it doesn't exist yet.
+    if (srv_descriptor_cache_.empty() ||
+        srv_descriptor_cache_.back().current_usage >=
+            SRVDescriptorCachePage::kHeapSize) {
+      D3D12_DESCRIPTOR_HEAP_DESC new_heap_desc;
+      new_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+      new_heap_desc.NumDescriptors = SRVDescriptorCachePage::kHeapSize;
+      new_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+      new_heap_desc.NodeMask = 0;
+      ID3D12DescriptorHeap* new_heap;
+      if (SUCCEEDED(device->CreateDescriptorHeap(&new_heap_desc,
+                                                 IID_PPV_ARGS(&new_heap)))) {
+        SRVDescriptorCachePage new_page;
+        new_page.heap = new_heap;
+        new_page.heap_start = new_heap->GetCPUDescriptorHandleForHeapStart();
+        new_page.current_usage = 1;
+        cached_handle = new_page.heap_start;
+        srv_descriptor_cache_.push_back(new_page);
+      }
+    } else {
+      SRVDescriptorCachePage& page = srv_descriptor_cache_.back();
+      cached_handle =
+          provider->OffsetViewDescriptor(page.heap_start, page.current_usage);
+      ++page.current_usage;
+    }
+    if (cached_handle.ptr) {
+      device->CreateShaderResourceView(resource, &desc, cached_handle);
+      texture->cached_srv_descriptor = cached_handle;
+      texture->cached_srv_descriptor_swizzle = binding.swizzle;
+    }
+  }
+  if (cached_handle.ptr) {
+    device->CopyDescriptorsSimple(1, handle, cached_handle,
+                                  D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  } else {
+    device->CreateShaderResourceView(resource, &desc, handle);
+  }
 }
 
 TextureCache::SamplerParameters TextureCache::GetSamplerParameters(
@@ -1160,7 +1308,7 @@ bool TextureCache::TileResolvedTexture(
           ((texture_base + texture_size - 1) >> 12) - (texture_base >> 12) + 1);
     } else {
       resolve_tile_constants.guest_base = texture_base;
-      shared_memory_->CreateRawUAV(descriptor_cpu_uav);
+      shared_memory_->WriteRawUAVDescriptor(descriptor_cpu_uav);
     }
   }
   command_list->D3DSetComputeRootDescriptorTable(1, descriptor_gpu_start);
@@ -1472,13 +1620,12 @@ void TextureCache::BindingInfoFromFetchConstant(
           ((swizzle & 0b001001001001) ^ ((swizzle >> 1) & 0b001001001001)) &
           swizzle_not_constant;
       swizzle ^= swizzle_green_or_blue | (swizzle_green_or_blue << 1);
-    } else if (format == TextureFormat::k_DXT3A ||
-               format == TextureFormat::k_DXT5A) {
-      // DXT3A is emulated as R8, DXT5A is emulated as BC4 or (for unaligned
-      // size) R8, but DXT5 alpha (in the red component of R8 and BC4) should be
-      // replicated.
-      // http://fileadmin.cs.lth.se/cs/Personal/Michael_Doggett/talks/unc-xenos-doggett.pdf
-      // If not 0.0 or 1.0 (if the high bit isn't set), make 0 (red).
+    } else if (host_formats_[uint32_t(format)].replicate_component) {
+      // Replicate the only component of single-component textures, which are
+      // emulated with red formats (including DXT3A, which uses R8 rather than
+      // DXT3 because the resulting size is the same, but there's no 4x4
+      // alignment requirement). If not 0.0 or 1.0 (if the high bit isn't set),
+      // make 0 (red).
       swizzle &= ~((swizzle_not_constant >> 1) | (swizzle_not_constant >> 2));
     }
     *swizzle_out = swizzle;
@@ -1603,6 +1750,8 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
   Texture* texture = new Texture;
   texture->key = key;
   texture->resource = resource;
+  texture->resource_size =
+      device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
   texture->state = state;
   texture->mip_offsets[0] = 0;
   uint32_t width_blocks, height_blocks, depth_blocks;
@@ -1663,8 +1812,13 @@ TextureCache::Texture* TextureCache::FindOrCreateTexture(TextureKey key) {
   }
   texture->base_watch_handle = nullptr;
   texture->mip_watch_handle = nullptr;
+  texture->cached_srv_descriptor.ptr = 0;
+  texture->cached_srv_descriptor_swizzle = 0b100100100100;
   textures_.insert(std::make_pair(map_key, texture));
   COUNT_profile_set("gpu/texture_cache/textures", textures_.size());
+  textures_total_size_ += texture->resource_size;
+  COUNT_profile_set("gpu/texture_cache/total_size_kb",
+                    uint32_t(textures_total_size_ >> 10));
   LogTextureAction(texture, "Created");
 
   return texture;
@@ -1799,7 +1953,7 @@ bool TextureCache::LoadTextureData(Texture* texture) {
     }
   } else {
     shared_memory_->UseForReading();
-    shared_memory_->CreateSRV(descriptor_cpu_start);
+    shared_memory_->WriteRawSRVDescriptor(descriptor_cpu_start);
   }
   // Create two destination descriptors since the table has both.
   for (uint32_t i = 1; i < descriptor_count; i += 2) {

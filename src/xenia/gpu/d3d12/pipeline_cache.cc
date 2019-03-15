@@ -93,9 +93,7 @@ bool PipelineCache::Initialize() {
       creation_thread_count = uint32_t(FLAGS_d3d12_pipeline_creation_threads);
     }
     creation_thread_count = std::min(creation_thread_count, uint32_t(16));
-    // TODO(Triang3l): Change the thread count to something non-fixed (3 is just
-    // for testing).
-    for (uint32_t i = 0; i < 3; ++i) {
+    for (uint32_t i = 0; i < creation_thread_count; ++i) {
       std::unique_ptr<xe::threading::Thread> creation_thread =
           xe::threading::Thread::Create({}, [this]() { CreationThread(); });
       creation_thread->set_name("D3D12 Pipelines");
@@ -331,6 +329,15 @@ bool PipelineCache::TranslateShader(D3D12Shader* shader,
              shader->ucode_disassembly().c_str());
   }
 
+  // If may be useful, create a version of the shader with early depth/stencil
+  // forced.
+  if (shader->type() == ShaderType::kPixel && !edram_rov_used_ &&
+      shader->early_z_allowed()) {
+    shader->SetForcedEarlyZShaderObject(
+        std::move(DxbcShaderTranslator::ForceEarlyDepthStencil(
+            shader->translated_binary().data())));
+  }
+
   // Disassemble the shader for dumping.
   if (FLAGS_d3d12_dxbc_disasm) {
     auto provider = command_processor_->GetD3D12Context()->GetD3D12Provider();
@@ -453,7 +460,13 @@ bool PipelineCache::GetCurrentStateDescription(
   }
 
   // Rasterizer state.
-  uint32_t cull_mode = pa_su_sc_mode_cntl & 0x3;
+  uint32_t cull_mode;
+  if (primitive_type == PrimitiveType::kPointList ||
+      primitive_type == PrimitiveType::kRectangleList) {
+    cull_mode = 0;
+  } else {
+    cull_mode = pa_su_sc_mode_cntl & 0x3;
+  }
   if (cull_mode & 1) {
     // More special, so checked first - generally back faces are culled.
     description_out.cull_mode = PipelineCullMode::kFront;
@@ -563,6 +576,8 @@ bool PipelineCache::GetCurrentStateDescription(
   }
 
   if (!edram_rov_used_) {
+    uint32_t rb_colorcontrol = regs[XE_GPU_REG_RB_COLORCONTROL].u32;
+
     // Depth/stencil. No stencil, always passing depth test and no depth writing
     // means depth disabled.
     if (render_targets[4].format != DXGI_FORMAT_UNKNOWN) {
@@ -608,6 +623,18 @@ bool PipelineCache::GetCurrentStateDescription(
       }
     } else {
       description_out.depth_func = 0b111;
+    }
+
+    // Forced early Z if the shader allows that and alpha testing and alpha to
+    // coverage are disabled.
+    // TODO(Triang3l): For memexporting shaders, possibly choose this according
+    // to the early Z toggle in RB_DEPTHCONTROL (the correct behavior is still
+    // unknown).
+    if (pixel_shader != nullptr &&
+        pixel_shader->GetForcedEarlyZShaderObject().size() != 0 &&
+        (!(rb_colorcontrol & 0x8) || (rb_colorcontrol & 0x7) == 0x7) &&
+        !(rb_colorcontrol & 0x10)) {
+      description_out.force_early_z = 1;
     }
 
     // Render targets and blending state. 32 because of 0x1F mask, for safety
@@ -689,7 +716,7 @@ bool PipelineCache::GetCurrentStateDescription(
       rt.format = RenderTargetCache::GetBaseColorFormat(
           ColorRenderTargetFormat((color_info >> 16) & 0xF));
       rt.write_mask = (color_mask >> (guest_rt_index * 4)) & 0xF;
-      if (rt.write_mask) {
+      if (!(rb_colorcontrol & 0x20) && rt.write_mask) {
         rt.src_blend = kBlendFactorMap[blendcontrol & 0x1F];
         rt.dest_blend = kBlendFactorMap[(blendcontrol >> 8) & 0x1F];
         rt.blend_op = BlendOp((blendcontrol >> 5) & 0x7);
@@ -868,10 +895,17 @@ ID3D12PipelineState* PipelineCache::CreatePipelineState(
       assert_always();
       return nullptr;
     }
-    state_desc.PS.pShaderBytecode =
-        description.pixel_shader->translated_binary().data();
-    state_desc.PS.BytecodeLength =
-        description.pixel_shader->translated_binary().size();
+    const auto& forced_early_z_shader =
+        description.pixel_shader->GetForcedEarlyZShaderObject();
+    if (description.force_early_z && forced_early_z_shader.size() != 0) {
+      state_desc.PS.pShaderBytecode = forced_early_z_shader.data();
+      state_desc.PS.BytecodeLength = forced_early_z_shader.size();
+    } else {
+      state_desc.PS.pShaderBytecode =
+          description.pixel_shader->translated_binary().data();
+      state_desc.PS.BytecodeLength =
+          description.pixel_shader->translated_binary().size();
+    }
   } else if (edram_rov_used_) {
     state_desc.PS.pShaderBytecode = depth_only_pixel_shader_.data();
     state_desc.PS.BytecodeLength = depth_only_pixel_shader_.size();
